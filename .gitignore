@@ -1,0 +1,17 @@
+#*#
+*.backup
+*.core
+*.dSYM
+*.log
+*.o
+*~
+.DS_Store
+.cproject
+.deps
+.gitcheckout
+.goutputstream-*
+.project
+core*
+tags
+tags.*
+typescript
