@@ -6,15 +6,30 @@
 #include <inttypes.h>
 #include <assert.h>
 
+struct m61_user_alloc_stats user_stats = {
+    0, 0, 0
+};
+
 void* m61_malloc(size_t sz, const char* file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    // Your code here.
-    return malloc(sz);
+    // Setup pointer to capture malloc's output
+    void* mem_active_ptr = malloc(sz + 1); 
+    // Check if malloc ran successfully and if so, increment the user_stats struct
+    if (mem_active_ptr == NULL) {
+        //malloc failed to allocate memory
+        return NULL;
+    } else {
+        user_stats.active += 1;
+        user_stats.active_sz += (unsigned long long) sz;
+        user_stats.total += 1;
+        return mem_active_ptr;
+    }
 }
 
 void m61_free(void *ptr, const char *file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    // Your code here.
+    // Check if free ran successfully, and if so decrement user_stats struct
+    user_stats.active -= 1;
     free(ptr);
 }
 
@@ -39,10 +54,20 @@ void* m61_calloc(size_t nmemb, size_t sz, const char* file, int line) {
     return ptr;
 }
 
+struct m61_statistics init_stats = {
+    0, 0, 0, 0, 0, 0, NULL, NULL
+};
+
 void m61_getstatistics(struct m61_statistics* stats) {
     // Stub: set all statistics to enormous numbers
     memset(stats, 255, sizeof(struct m61_statistics));
     // Your code here.
+    *stats = init_stats;
+    struct m61_user_alloc_stats ustats;
+
+    stats->nactive = user_stats.active;
+    stats->active_size = user_stats.active_sz;
+    stats->ntotal = user_stats.total;
 }
 
 void m61_printstatistics(void) {
