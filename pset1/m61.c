@@ -6,8 +6,12 @@
 #include <inttypes.h>
 #include <assert.h>
 
-struct m61_user_alloc_stats user_stats = {
-    0, 0, 0, 0, 0
+struct m61_user_alloc_stats temp_stats = { 
+    0
+};
+
+struct m61_statistics user_stats = {
+    0, 0, 0, 0, 0, 0, NULL, NULL
 };
 
 void* m61_malloc(size_t sz, const char* file, int line) {
@@ -17,14 +21,17 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     // Check if malloc ran successfully and if so, increment the user_stats struct
     if (mem_active_ptr == NULL) {
         //malloc failed to allocate memory
+        user_stats.nfail += 1;
+        user_stats.fail_size += ((unsigned long long) sz);
         return NULL;
     } else {
-        user_stats.active += 1;
-        user_stats.total += 1;
+        user_stats.nactive += 1;
+        user_stats.ntotal += 1;
         
-        user_stats.total_sz += ((unsigned long long) sz);
-        user_stats.sz = ((unsigned long long) sz);
-        user_stats.active_sz += ((unsigned long long) sz);
+        temp_stats.sz = ((unsigned long long) sz);
+        
+        user_stats.active_size += ((unsigned long long) sz);
+        user_stats.total_size += ((unsigned long long) sz);
         
         return mem_active_ptr;
     }
@@ -33,10 +40,11 @@ void* m61_malloc(size_t sz, const char* file, int line) {
 void m61_free(void *mem_active_ptr, const char *file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
     // Check if free ran successfully, and if so decrement user_stats struct
-    user_stats.active -= 1;
     
-    unsigned long long sz = user_stats.sz;
-    user_stats.active_sz -= sz;
+    unsigned long long sz = temp_stats.sz;
+    
+    user_stats.nactive -= 1;
+    user_stats.active_size -= sz;
     
     free(mem_active_ptr);
 }
@@ -62,21 +70,12 @@ void* m61_calloc(size_t nmemb, size_t sz, const char* file, int line) {
     return ptr;
 }
 
-struct m61_statistics init_stats = {
-    0, 0, 0, 0, 0, 0, NULL, NULL
-};
 
 void m61_getstatistics(struct m61_statistics* stats) {
     // Stub: set all statistics to enormous numbers
     memset(stats, 255, sizeof(struct m61_statistics));
     // Your code here.
-    *stats = init_stats;
-    struct m61_user_alloc_stats ustats;
-
-    stats->nactive = user_stats.active;
-    stats->active_size = user_stats.active_sz;
-    stats->ntotal = user_stats.total;
-    stats->total_size = user_stats.total_sz;
+    *stats = user_stats;
 }
 
 void m61_printstatistics(void) {
