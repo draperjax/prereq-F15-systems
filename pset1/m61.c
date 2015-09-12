@@ -18,22 +18,23 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     void* mem_active_ptr = malloc(sz + 1); 
     // Check if malloc was successful and increment user_stats
     if (mem_active_ptr == NULL) {
-        //malloc failed to allocate memory
+        // Malloc failed to allocate memory
         user_stats.nfail += 1;
         user_stats.fail_size += ((unsigned long long) sz);
         return NULL;
     } else {
-        //Increment the metadata counts
+        // Increment the metadata counts
         user_stats.nactive += 1;
         user_stats.ntotal += 1;  
         
-        //Increment the metadata allocation sizes
+        // Increment the metadata allocation sizes
         user_stats.active_size += ((unsigned long long) sz);
         user_stats.total_size += ((unsigned long long) sz);
 
-        //Setup Linked List to capture ptr/alloc size info
+        // Setup Linked List to capture ptr/alloc size info
         struct statsNode* current = NULL;
 
+        // Define node with current alloc info
         current = malloc(sizeof(struct statsNode));
         current->ptr = mem_active_ptr;
         current->sz = (unsigned long long) sz;
@@ -47,10 +48,14 @@ void* m61_malloc(size_t sz, const char* file, int line) {
 void m61_free(void *mem_active_ptr, const char *file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
 
+    // Decrement active allocations 
     user_stats.nactive -= 1;
 
     struct statsNode* current = head;
-
+    
+    // Iterate through Linked List to check ptrs
+    // Decrement active_size if mem_active_ptr matches
+    // Format guided by Nick Parlante's 'Linked List Basics'
     while (current != NULL)
     {
         if (current->ptr == mem_active_ptr)
