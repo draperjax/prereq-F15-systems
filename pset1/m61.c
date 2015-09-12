@@ -7,7 +7,7 @@
 #include <assert.h>
 
 struct m61_user_alloc_stats user_stats = {
-    0, 0, 0
+    0, 0, 0, 0, 0
 };
 
 void* m61_malloc(size_t sz, const char* file, int line) {
@@ -20,17 +20,25 @@ void* m61_malloc(size_t sz, const char* file, int line) {
         return NULL;
     } else {
         user_stats.active += 1;
-        user_stats.active_sz += (unsigned long long) sz;
         user_stats.total += 1;
+        
+        user_stats.total_sz += ((unsigned long long) sz);
+        user_stats.sz = ((unsigned long long) sz);
+        user_stats.active_sz += ((unsigned long long) sz);
+        
         return mem_active_ptr;
     }
 }
 
-void m61_free(void *ptr, const char *file, int line) {
+void m61_free(void *mem_active_ptr, const char *file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
     // Check if free ran successfully, and if so decrement user_stats struct
     user_stats.active -= 1;
-    free(ptr);
+    
+    unsigned long long sz = user_stats.sz;
+    user_stats.active_sz -= sz;
+    
+    free(mem_active_ptr);
 }
 
 void* m61_realloc(void* ptr, size_t sz, const char* file, int line) {
@@ -68,6 +76,7 @@ void m61_getstatistics(struct m61_statistics* stats) {
     stats->nactive = user_stats.active;
     stats->active_size = user_stats.active_sz;
     stats->ntotal = user_stats.total;
+    stats->total_size = user_stats.total_sz;
 }
 
 void m61_printstatistics(void) {
