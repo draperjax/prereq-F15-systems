@@ -9,7 +9,7 @@
 struct statsNode *head = NULL;
 
 struct m61_statistics user_stats = {
-    0, 0, 0, 0, 0, 0, NULL, NULL
+    0, 0, 0, 0, 0, 0, NULL, (char*) UINTPTR_MAX
 };
 
 void* m61_malloc(size_t sz, const char* file, int line) {
@@ -37,12 +37,14 @@ void* m61_malloc(size_t sz, const char* file, int line) {
         // Define node with current alloc info
         current = malloc(sizeof(struct statsNode));
         current->ptr = mem_active_ptr;
+        if (user_stats.heap_max < (char*) mem_active_ptr)
+            user_stats.heap_max = (char*) mem_active_ptr;
         current->sz = (unsigned long long) sz;
         current->next = head;
         head = current;
-
+        
         return mem_active_ptr;
-    }
+    }    
 }
 
 void m61_free(void *mem_active_ptr, const char *file, int line) {
