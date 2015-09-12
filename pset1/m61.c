@@ -6,9 +6,7 @@
 #include <inttypes.h>
 #include <assert.h>
 
-struct m61_user_alloc_stats temp_stats = { 
-    0
-};
+struct statsNode *head = NULL;
 
 struct m61_statistics user_stats = {
     0, 0, 0, 0, 0, 0, NULL, NULL
@@ -18,33 +16,50 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
     // Setup pointer to capture malloc's output
     void* mem_active_ptr = malloc(sz + 1); 
-    // Check if malloc ran successfully and if so, increment the user_stats struct
+    // Check if malloc was successful and increment user_stats
     if (mem_active_ptr == NULL) {
         //malloc failed to allocate memory
         user_stats.nfail += 1;
         user_stats.fail_size += ((unsigned long long) sz);
         return NULL;
     } else {
+        //Increment the metadata counts
         user_stats.nactive += 1;
-        user_stats.ntotal += 1;
+        user_stats.ntotal += 1;  
         
-        temp_stats.sz = ((unsigned long long) sz);
-        
+        //Increment the metadata allocation sizes
         user_stats.active_size += ((unsigned long long) sz);
         user_stats.total_size += ((unsigned long long) sz);
-        
+
+        //Setup Linked List to capture ptr/alloc size info
+        struct statsNode* current = NULL;
+
+        current = malloc(sizeof(struct statsNode));
+        current->ptr = mem_active_ptr;
+        current->sz = (unsigned long long) sz;
+        current->next = head;
+        head = current;
+
         return mem_active_ptr;
     }
 }
 
 void m61_free(void *mem_active_ptr, const char *file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    // Check if free ran successfully, and if so decrement user_stats struct
-    
-    unsigned long long sz = temp_stats.sz;
-    
+
     user_stats.nactive -= 1;
-    user_stats.active_size -= sz;
+
+    struct statsNode* current = head;
+
+    while (current != NULL)
+    {
+        if (current->ptr == mem_active_ptr)
+        {
+            unsigned long long temp_sz = current->sz;
+            user_stats.active_size -= temp_sz;
+        }
+        current = current->next;
+    }
     
     free(mem_active_ptr);
 }
