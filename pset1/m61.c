@@ -9,40 +9,50 @@
 struct statsNode *head = NULL;
 
 struct m61_statistics user_stats = {
-    0, 0, 0, 0, 0, 0, NULL, (char*) UINTPTR_MAX
+    0, 0, 0, 0, 0, 0, NULL, NULL 
 };
 
 void* m61_malloc(size_t sz, const char* file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    // Setup pointer to capture malloc's output
+    // Your code here.
+    /* Setup pointer to capture malloc's output */
     void* mem_active_ptr = malloc(sz + 1); 
-    // Check if malloc was successful and increment user_stats
+    /* Check if malloc was successful and increment user_stats */
     if (mem_active_ptr == NULL) {
-        // Malloc failed to allocate memory
+        /* Malloc failed to allocate memory */
         user_stats.nfail += 1;
         user_stats.fail_size += ((unsigned long long) sz);
         return NULL;
     } else {
-        // Increment the metadata counts
+        /* Increment the metadata counts */
         user_stats.nactive += 1;
         user_stats.ntotal += 1;  
         
-        // Increment the metadata allocation sizes
+        /* Increment the metadata allocation sizes */
         user_stats.active_size += ((unsigned long long) sz);
         user_stats.total_size += ((unsigned long long) sz);
 
-        // Setup Linked List to capture ptr/alloc size info
+        /* Setup LL Node to store ptr/alloc info */
         struct statsNode* current = NULL;
 
-        // Define node with current alloc info
+        /* Define node with current alloc */
         current = malloc(sizeof(struct statsNode));
         current->ptr = mem_active_ptr;
-        if (user_stats.heap_max < (char*) mem_active_ptr)
-            user_stats.heap_max = (char*) mem_active_ptr;
         current->sz = (unsigned long long) sz;
         current->next = head;
         head = current;
         
+        /* Set Heap Max */
+        if (user_stats.heap_max < (char*) mem_active_ptr + 100)
+            user_stats.heap_max = (char*) mem_active_ptr + 100;
+
+        /* Set Heap Min */
+        if (user_stats.heap_min == NULL && 
+            user_stats.heap_min > (char*) mem_active_ptr - 100)
+            user_stats.heap_min = (char*) mem_active_ptr - 100;
+        else if (user_stats.heap_min == NULL)
+            user_stats.heap_min = ((char*) mem_active_ptr - 100);
+
         return mem_active_ptr;
     }    
 }
