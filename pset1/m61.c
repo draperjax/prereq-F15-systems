@@ -52,7 +52,7 @@ void* m61_malloc(size_t sz, const char* file, int line) {
             user_stats.heap_min = (char*) ptr - 100;
         else if (user_stats.heap_min == NULL)
             user_stats.heap_min = ((char*) ptr - 100);
-
+        
         return ptr;
     }    
 }
