@@ -16,7 +16,7 @@ Nick Parlante, Linked List Basics
 
 NOTES FOR THE GRADER (if any):
 
-Note about Email: For some reason, my personal email (jishasjacob@gmail.com) was registered in the Grading Server, which then rejected any repo that didn't have a commit from that email address. For this reason, I whiched my git config email to match the Grading Server (jishasjacob@gmail.com). Please let me know if you have any issues or if this can be re-configured.
+Note about Email: For some reason, my personal email (jishasjacob@gmail.com) was registered in the Grading Server, which then rejected any repo that didn't have a commit from that email address. For this reason, I switched my git config email to match the Grading Server (jishasjacob@gmail.com). Please let me know if you have any issues with this or if this can be re-configured.
 
 Thanks!
 Jisha
