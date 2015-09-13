@@ -16,9 +16,9 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
     // Your code here.
     /* Setup pointer to capture malloc's output */
-    void* mem_active_ptr = malloc(sz + 1); 
+    void* ptr = malloc(sz + 1); 
     /* Check if malloc was successful and increment user_stats */
-    if (mem_active_ptr == NULL) {
+    if (ptr == NULL) {
         /* Malloc failed to allocate memory */
         user_stats.nfail += 1;
         user_stats.fail_size += ((unsigned long long) sz);
@@ -37,40 +37,40 @@ void* m61_malloc(size_t sz, const char* file, int line) {
 
         /* Define node with current alloc */
         current = malloc(sizeof(struct statsNode));
-        current->ptr = mem_active_ptr;
+        current->ptr = ptr;
         current->sz = (unsigned long long) sz;
         current->next = head;
         head = current;
         
         /* Set Heap Max */
-        if (user_stats.heap_max < (char*) mem_active_ptr + 100)
-            user_stats.heap_max = (char*) mem_active_ptr + 100;
+        if (user_stats.heap_max < (char*) ptr + 100)
+            user_stats.heap_max = (char*) ptr + 100;
 
         /* Set Heap Min */
         if (user_stats.heap_min == NULL && 
-            user_stats.heap_min > (char*) mem_active_ptr - 100)
-            user_stats.heap_min = (char*) mem_active_ptr - 100;
+            user_stats.heap_min > (char*) ptr - 100)
+            user_stats.heap_min = (char*) ptr - 100;
         else if (user_stats.heap_min == NULL)
-            user_stats.heap_min = ((char*) mem_active_ptr - 100);
+            user_stats.heap_min = ((char*) ptr - 100);
 
-        return mem_active_ptr;
+        return ptr;
     }    
 }
 
-void m61_free(void *mem_active_ptr, const char *file, int line) {
+void m61_free(void *ptr, const char *file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-
-    // Decrement active allocations 
+    // Your code here.
+    /* Decrement active allocations */
     user_stats.nactive -= 1;
 
     struct statsNode* current = head;
     
-    // Iterate through Linked List to check ptrs
-    // Decrement active_size if mem_active_ptr matches
-    // Format guided by Nick Parlante's 'Linked List Basics'
+    /* Iterate through Linked List to check ptrs */
+    /* Decrement active_size if mem_active_ptr matches */
+    /* Format guided by Nick Parlante's 'Linked List Basics' */
     while (current != NULL)
     {
-        if (current->ptr == mem_active_ptr)
+        if (current->ptr == ptr)
         {
             unsigned long long temp_sz = current->sz;
             user_stats.active_size -= temp_sz;
@@ -78,7 +78,7 @@ void m61_free(void *mem_active_ptr, const char *file, int line) {
         current = current->next;
     }
     
-    free(mem_active_ptr);
+    free(ptr);
 }
 
 void* m61_realloc(void* ptr, size_t sz, const char* file, int line) {
