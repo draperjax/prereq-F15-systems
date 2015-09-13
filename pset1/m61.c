@@ -16,7 +16,7 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
     // Your code here.
     /* Setup pointer to capture malloc's output */
-    void* ptr = malloc(sz + 1); 
+    void* ptr = malloc(sz); 
     /* Check if malloc was successful and increment user_stats */
     if (ptr == NULL) {
         /* Malloc failed to allocate memory */
