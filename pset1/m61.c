@@ -25,10 +25,13 @@ void* m61_malloc(size_t sz, const char* file, int line) {
         return NULL;
     } else {
         /* Increment the metadata counts */
-        user_stats.nactive += 1;
-        user_stats.ntotal += 1;  
+        if (sz>0)
+		{
+            user_stats.nactive += 1;
+			user_stats.ntotal += 1;  
+        }
         
-        /* Increment the metadata allocation sizes */
+		/* Increment the metadata allocation sizes */
         user_stats.active_size += ((unsigned long long) sz);
         user_stats.total_size += ((unsigned long long) sz);
 
@@ -60,10 +63,8 @@ void* m61_malloc(size_t sz, const char* file, int line) {
 void m61_free(void *ptr, const char *file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
     // Your code here.
-    /* Decrement active allocations */
-    user_stats.nactive -= 1;
-
-    struct statsNode* current = head;
+	 
+	struct statsNode* current = head;
     
     /* Iterate through Linked List to check ptrs */
     /* Decrement active_size if mem_active_ptr matches */
@@ -73,7 +74,10 @@ void m61_free(void *ptr, const char *file, int line) {
         if (current->ptr == ptr)
         {
             unsigned long long temp_sz = current->sz;
-            user_stats.active_size -= temp_sz;
+			user_stats.active_size -= temp_sz;
+			
+			/* Decrement active allocations */
+			user_stats.nactive -= 1;
         }
         current = current->next;
     }
@@ -83,12 +87,14 @@ void m61_free(void *ptr, const char *file, int line) {
 
 void* m61_realloc(void* ptr, size_t sz, const char* file, int line) {
     void* new_ptr = NULL;
+
     if (sz)
         new_ptr = m61_malloc(sz, file, line);
     if (ptr && new_ptr) {
         // Copy the data from `ptr` into `new_ptr`.
         // To do that, we must figure out the size of allocation `ptr`.
-        // Your code here (to fix test012).
+        // Your code here (to fix test012). 
+        memcpy(new_ptr,ptr, sz);
     }
     m61_free(ptr, file, line);
     return new_ptr;
