@@ -50,8 +50,7 @@ void* m61_malloc(size_t sz, const char* file, int line) {
             user_stats.heap_max = (char*) ptr + 100;
 
         /* Set Heap Min */
-        if (user_stats.heap_min == NULL && 
-            user_stats.heap_min > (char*) ptr - 100)
+        if (user_stats.heap_min > (char*) ptr - 100)
             user_stats.heap_min = (char*) ptr - 100;
         else if (user_stats.heap_min == NULL)
             user_stats.heap_min = ((char*) ptr - 100);
@@ -81,7 +80,12 @@ void m61_free(void *ptr, const char *file, int line) {
         }
         current = current->next;
     }
-    
+
+    if ((char*) ptr > user_stats.heap_max)
+    {
+        printf("MEMORY BUG???: invalid free of pointer ???, not in heap");
+        exit(1);
+    }
     free(ptr);
 }
 
@@ -102,7 +106,12 @@ void* m61_realloc(void* ptr, size_t sz, const char* file, int line) {
 
 void* m61_calloc(size_t nmemb, size_t sz, const char* file, int line) {
     // Your code here (to fix test014).
-    void* ptr = m61_malloc(nmemb * sz, file, line);
+    void* ptr = NULL;
+    if (sz < 100)
+        ptr = m61_malloc(nmemb * sz, file, line);
+    else
+        user_stats.nfail += 1;
+
     if (ptr)
         memset(ptr, 0, nmemb * sz);
     return ptr;
