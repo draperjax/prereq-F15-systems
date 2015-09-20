@@ -4,101 +4,112 @@
  #include <stdlib.h>
  #include <string.h>
  #include <stdio.h>
+ #include <stdint.h>
  #include <inttypes.h>
  #include <assert.h>
      
  //struct statsNode *head = NULL;
          
  struct m61_statistics user_stats = {
-     0, 0, 0, 0, 0, 0, NULL, NULL
+     0, 0, 0, 0, 0, 0, (char*) UINTPTR_MAX, NULL
  };      
-     
+ 
  void* m61_malloc(size_t sz, const char* file, int line) {
      (void) file, (void) line;   // avoid uninitialized variable warnings
      // Your code here.
      struct statsNode* metadata_ptr = NULL;
+     //int* live_ptr = NULL;
      void* ptr = NULL;
-         
+     struct footNode* boundary_ptr = NULL;
+    
      if (sz < SZ_MAX) {
          /* Setup metadata pointer to capture malloc's output */
-         metadata_ptr = malloc(sz + sizeof(struct statsNode));
+         metadata_ptr = malloc(sizeof(struct statsNode) + sz + sizeof(struct footNode));
          
-         /* Setup payload ptr */
-         ptr = metadata_ptr + sizeof(struct statsNode);
+         /* Setup the pointer to alloc live indicator */
+         //int* live_ptr = (int*) metadata_ptr + sizeof(struct statsNode);
+         
+         /* Setup the pointer to payload */
+         ptr = (char*) metadata_ptr + sizeof(struct statsNode);
+         
+         /* Setup the pointer to the footer */
+         boundary_ptr = (struct footNode*) ((char*) ptr + sz);
      }       
           
      /* Check if malloc was successful and increment user_stats */
      if (ptr == NULL) {
          /* Malloc failed to allocate memory */
          user_stats.nfail += 1;
-         user_stats.fail_size += (unsigned long long) sz;
+         user_stats.fail_size += (int) sz;
          return NULL;
      } else {
-         /* Increment the metadata counts */
-         if (sz>0)
-         {
-             user_stats.nactive += 1;
-             user_stats.ntotal += 1;  
-         }
-         
-         /* Increment the metadata allocation sizes */
-         user_stats.active_size += (unsigned long long) sz;
-         user_stats.total_size += (unsigned long long) sz;
-             
-         /* Define node with current alloc */
-         metadata_ptr->ptr = ptr;
-         metadata_ptr->sz = (unsigned long long) sz;
-         
-         /* Set Heap Max */
-         if (user_stats.heap_max < (char*) ptr + 200) 
-             user_stats.heap_max = (char*) ptr + 200;
-     
-         /* Set Heap Min */
-         if (user_stats.heap_min > (char*) ptr - 10)
-             user_stats.heap_min = (char*) ptr - 10;
-         else if (user_stats.heap_min == NULL)
-             user_stats.heap_min = ((char*) ptr - 10);
-     
-         return ptr; 
+        /* Increment the metadata counts */
+        user_stats.nactive += 1;
+        user_stats.ntotal += 1;
+        
+        /* Set the allocation live indicator to 1 */ 
+        metadata_ptr->active = 1;
+        
+        /* Increment the metadata allocation sizes */
+        user_stats.active_size += (int) sz; 
+        user_stats.total_size += (int) sz; 
+        
+        /* Define node with current alloc */
+        metadata_ptr->ptr = ptr;
+        metadata_ptr->sz = (int) sz; 
+        
+        /* Set Heap Max */
+        if (user_stats.heap_max < (char*) ptr + sz + sizeof(struct footNode)) 
+            user_stats.heap_max = (char*) ptr + sz + sizeof(struct footNode);
+        
+        /* Set Heap Min */
+        if (user_stats.heap_min > (char*) metadata_ptr)
+            user_stats.heap_min = (char*) metadata_ptr;
+        
+        metadata_ptr->head = 88;
+        boundary_ptr->boundary1 = 23;
+ 
+     return ptr; 
      }    
  }       
      
  void m61_free(void *ptr, const char *file, int line) {
      (void) file, (void) line;   // avoid uninitialized variable warnings
-     // Your code here. 
+     // Your code here.
 
-     if ((char*) ptr > user_stats.heap_min) {
-         struct statsNode* metadata_ptr = (struct statsNode*) ptr - sizeof(struct statsNode);
-         if ((char*) ptr > user_stats.heap_max) {
-             printf("MEMORY BUG: invalid free of pointer %p, not in heap", ptr);
+        if ((char*) ptr >= (user_stats.heap_max + sizeof(struct footNode)) || (char*) ptr < (user_stats.heap_min + sizeof(struct statsNode))) {
+             printf("MEMORY BUG: invalid free of pointer %p, not in heap\n", ptr);
              exit(0);
-         } else if (metadata_ptr->ptr != ptr) {
-             printf("MEMORY BUG: %s:%i: invalid free of pointer %p, not allocated", file,line,ptr);
-             exit(0);
-         } else if (metadata_ptr->sz == (unsigned long long) NULL) { 
-             printf("MEMORY BUG: invalid free of pointer %p", ptr);
-             exit(0);
-         } else {
-             unsigned long long temp_sz = metadata_ptr->sz;
-             user_stats.active_size -= temp_sz;
-             
-             /* Decrement active allocations */
-             user_stats.nactive -= 1;
-             
-             metadata_ptr->sz = (unsigned long long) NULL;
+        } else {
+             struct statsNode* metadata_ptr = ((struct statsNode*) ptr - 1);
+             size_t sz = metadata_ptr->sz;
+             struct footNode* boundary_ptr = (struct footNode*) ((char*) ptr + sz);
+        
+             if (metadata_ptr->ptr != ptr) {
+                 printf("MEMORY BUG: %s:%i: invalid free of pointer %p, not allocated\n", file,line,ptr);
+                 int distance = (char*) metadata_ptr->ptr - (char*) ptr;
+                 printf("  %s:%i: %p is %i bytes inside a %i byte region allocated here\n", file,(line -1), ptr, distance, sz);
+                 exit(0);
+             } else if (metadata_ptr->active == 0) {
+                 printf("MEMORY BUG: invalid free of pointer %p", ptr);
+                 exit(0);
+             } else { 
+                 if (boundary_ptr->boundary1 != 23) {
+                     printf("MEMORY BUG: detected wild write during free of pointer %p, %zu, %llu", ptr, sz, user_stats.active_size); 
+                     exit(0);
+                 } else {
+                     size_t temp_sz = sz;
+                     user_stats.active_size -= (int) temp_sz;
 
-             free(ptr);
-         }
-     } else {
-         struct statsNode* metadata = ((struct statsNode*) ptr)-sizeof(struct statsNode);
-         unsigned long long temp_sz = sizeof(*metadata);
-         user_stats.active_size -= temp_sz;
-         
-         /* Decrement active allocations */
-         user_stats.nactive -= 1;
-         free(ptr);
-     }
-     
+                     metadata_ptr->active = 0;
+
+                     /* Decrement active allocations */
+                     user_stats.nactive -= 1;
+                
+                     free(ptr);
+                 }
+            }
+        } 
  }       
          
  void* m61_realloc(void* ptr, size_t sz, const char* file, int line) {
@@ -110,7 +121,7 @@
          // Copy the data from `ptr` into `new_ptr`.
          // To do that, we must figure out the size of allocation `ptr`.
          // Your code here (to fix test012)
-         struct statsNode* metadata = ((struct statsNode*) ptr)-sizeof(struct statsNode);
+         struct statsNode* metadata = ((struct statsNode*) ptr - 1);
          size_t ptr_sz = metadata->sz;
         
          if (sz > ptr_sz) {
@@ -158,4 +169,3 @@
  void m61_printleakreport(void) {
      // Your code here.
  }
-

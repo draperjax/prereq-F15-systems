@@ -1,5 +1,5 @@
 # Default optimization level
-O ?= 2
+O ?= 1
 
 TESTS = $(patsubst %.c,%,$(sort $(wildcard test[0-9][0-9][0-9].c)))
 

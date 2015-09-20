@@ -19,9 +19,14 @@ struct m61_statistics {
 };
 
 struct statsNode {
+    int head;
     void* ptr;
-    unsigned long long sz;              // captures current sz
-    struct statsNode* next;
+    size_t sz;              // captures current sz
+    int active;
+};
+
+struct footNode {
+    int boundary1;              // captures current sz
 };
 
 void m61_getstatistics(struct m61_statistics* stats);
