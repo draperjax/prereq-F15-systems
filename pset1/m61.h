@@ -23,6 +23,8 @@ struct statsNode {
     void* ptr;
     size_t sz;              // captures current sz
     int active;
+    struct statsNode* next;
+    struct statsNode* prev;
 };
 
 struct footNode {

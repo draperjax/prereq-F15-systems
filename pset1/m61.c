@@ -7,27 +7,23 @@
  #include <stdint.h>
  #include <inttypes.h>
  #include <assert.h>
-     
- //struct statsNode *head = NULL;
-         
+      
  struct m61_statistics user_stats = {
      0, 0, 0, 0, 0, 0, (char*) UINTPTR_MAX, NULL
  };      
- 
+
+ struct statsNode* root = NULL;
+
  void* m61_malloc(size_t sz, const char* file, int line) {
      (void) file, (void) line;   // avoid uninitialized variable warnings
      // Your code here.
      struct statsNode* metadata_ptr = NULL;
-     //int* live_ptr = NULL;
      void* ptr = NULL;
      struct footNode* boundary_ptr = NULL;
     
      if (sz < SZ_MAX) {
          /* Setup metadata pointer to capture malloc's output */
          metadata_ptr = malloc(sizeof(struct statsNode) + sz + sizeof(struct footNode));
-         
-         /* Setup the pointer to alloc live indicator */
-         //int* live_ptr = (int*) metadata_ptr + sizeof(struct statsNode);
          
          /* Setup the pointer to payload */
          ptr = (char*) metadata_ptr + sizeof(struct statsNode);
@@ -68,6 +64,34 @@
         
         metadata_ptr->head = 88;
         boundary_ptr->boundary1 = 23;
+        
+        /* Adding a node to the linked list of metadata pointers */
+        struct statsNode* head = malloc(sizeof(struct statsNode));
+
+        if (root == NULL) {
+            root = metadata_ptr;
+        } else {
+            while (root->prev != NULL) {
+                metadata_ptr->prev = root;
+            }
+            
+            while (root->next != NULL) {
+                root = metadata_ptr->next;
+            }
+            
+            root = metadata_ptr;
+
+//            while (root->next != NULL) {
+//                root = metadata_ptr->next;
+//            }
+
+//            root->next = metadata_ptr;
+//            root->next = (char*) metadata_ptr;
+//            metadata_ptr->prev = (char*) root;
+//            root = metadata_ptr;
+//        } else {
+//            *root = metadata_ptr;
+        }
  
      return ptr; 
      }    
@@ -105,7 +129,28 @@
 
                      /* Decrement active allocations */
                      user_stats.nactive -= 1;
-                
+
+                   /* Free the node from the linked list of metadata pointers */ 
+                     if (metadata_ptr == root && root->prev == NULL) {
+                         root = NULL;
+                     } else if (metadata_ptr == root && root->prev != NULL) {
+                         root->prev = NULL;
+                         root->next = NULL;
+                         root = root->prev;
+                     } else if (metadata_ptr == root) {
+                         if (metadata_ptr->next != NULL) {
+                             (metadata_ptr->next)->prev = metadata_ptr->prev;
+                         }
+
+                         if (metadata_ptr->prev != NULL) {
+                            (metadata_ptr->prev)->next = metadata_ptr->prev;
+                         }
+
+                         root->prev = root;
+                         (root->next)->prev = NULL;
+                         root->next = NULL;
+                     }
+                     
                      free(ptr);
                  }
             }
@@ -167,5 +212,9 @@
  }
  
  void m61_printleakreport(void) {
-     // Your code here.
+     // Your code here
+     while (root != NULL) {
+        root->prev = root;
+     }
+     //printf("LEAK CHECK: test%s.c:18: allocated object %ptr with size %zu");
  }
