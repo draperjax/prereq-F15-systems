@@ -102,7 +102,7 @@
 				printf("MEMORY BUG: invalid free of pointer %p", ptr);
 				exit(0);
 			} else if (boundary_ptr->boundary1 != 23) {
-				printf("MEMORY BUG: detected wild write during free of pointer %p", ptr); 
+				printf("MEMORY BUG: detected wild write during free of pointer %p\n", ptr); 
 				exit(0);
 			} else {
 				size_t temp_sz = metadata_ptr->sz;
@@ -138,11 +138,12 @@
 							((struct statsNode*)iter->prev)->next = iter->next; 
 						}
 						iter = NULL;
+
+						free(ptr);
 					} else {
 						iter = iter->prev;
 					}
 				}
-				free(ptr);
 			}
 		} 
  }       
