@@ -23,8 +23,10 @@ struct statsNode {
     void* ptr;
     size_t sz;              // captures current sz
     int active;
-    struct statsNode* next;
-    struct statsNode* prev;
+    const char* file; 
+    int line;
+    void* next;
+    void* prev;
 };
 
 struct footNode {
