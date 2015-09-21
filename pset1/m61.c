@@ -94,7 +94,9 @@
 		
 			if (metadata_ptr->ptr != ptr) {
 				printf("MEMORY BUG: %s:%i: invalid free of pointer %p, not allocated\n", file,line,ptr);
-				printf("  %s:%i: %p is 100 bytes inside a %llu byte region allocated here\n", file,(line -1), ptr, user_stats.active_size);
+
+				size_t distance = ((size_t) ptr - (size_t)(root->ptr));
+				printf("  %s:%i: %p is %zu bytes inside a %llu byte region allocated here\n", file,(line -1), ptr,distance, user_stats.active_size);
 				exit(0);
 			} else if (metadata_ptr->active == 0) {
 				printf("MEMORY BUG: invalid free of pointer %p", ptr);
