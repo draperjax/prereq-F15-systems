@@ -97,13 +97,13 @@
 
 				size_t distance = ((size_t) ptr - (size_t)(root->ptr));
 				printf("  %s:%i: %p is %zu bytes inside a %llu byte region allocated here\n", file,(line -1), ptr,distance, user_stats.active_size);
-				exit(0);
+				abort();
 			} else if (metadata_ptr->active == 0) {
 				printf("MEMORY BUG: invalid free of pointer %p", ptr);
-				exit(0);
+				abort();
 			} else if (boundary_ptr->boundary1 != 23) {
 				printf("MEMORY BUG: detected wild write during free of pointer %p\n", ptr); 
-				exit(0);
+				abort();
 			} else {
 				size_t temp_sz = metadata_ptr->sz;
 				user_stats.active_size -= (int) temp_sz;
@@ -137,8 +137,9 @@
 						if (iter->prev) {
 							((struct statsNode*)iter->prev)->next = iter->next; 
 						}
+						
 						iter = NULL;
-
+						free(metadata_ptr);
 						free(ptr);
 					} else {
 						iter = iter->prev;
