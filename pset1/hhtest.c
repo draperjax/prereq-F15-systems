@@ -111,6 +111,7 @@ int main(int argc, char **argv) {
 \n\
   If you give multiple SKEW COUNT pairs, then ./hhtest runs several\n\
   allocation phases in order.\n");
+        m61_hhtestreport();
         exit(0);
     }
 
