@@ -1,0 +1,15 @@
+README for CS 61 Problem Set 3
+------------------------------
+YOU MUST FILL OUT THIS FILE BEFORE SUBMITTING!
+
+OTHER COLLABORATORS AND CITATIONS (if any):
+
+
+
+KNOWN BUGS (if any):
+
+
+
+NOTES FOR THE GRADER (if any):
+
+
