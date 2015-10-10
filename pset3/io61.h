@@ -10,6 +10,8 @@
 typedef struct io61_file io61_file;
 
 io61_file* io61_fdopen(int fd, int mode);
+void io61_initb(io61_file* f, int fd);
+
 io61_file* io61_open_check(const char* filename, int mode);
 int io61_close(io61_file* f);
 
