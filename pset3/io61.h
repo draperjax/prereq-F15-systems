@@ -25,6 +25,9 @@ int io61_writec(io61_file* f, int ch);
 ssize_t io61_read(io61_file* f, char* buf, size_t sz);
 ssize_t io61_write(io61_file* f, const char* buf, size_t sz);
 
+ssize_t io61_readbl(io61_file* f, char* buf, size_t sz);
+ssize_t io61_writebl(io61_file* f, const char* buf, size_t sz);
+
 int io61_eof(io61_file* f);
 int io61_flush(io61_file* f);
 

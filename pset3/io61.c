@@ -18,8 +18,8 @@ struct io61_file {
     struct {
         size_t offset;
         unsigned char data[BLOCKSIZE];
+        void* data_ptr;
         size_t data_sz;
-        // void* main_mem_ptr;
     } cache_slot;
 };
 
@@ -42,6 +42,7 @@ void io61_initb(io61_file* f, int fd) {
     f->fd = fd;  
     f->seek = 0;
     f->cache_slot.offset = 0;
+    f->cache_slot.data_ptr = f->cache_slot.data;
 }
 
 // io61_close(f)
@@ -67,7 +68,7 @@ int io61_close(io61_file* f) {
 
 int io61_readc(io61_file* f) {
     size_t seek = f->seek;
-    if (seek + f->cache_slot.offset < f->cache_slot.offset + f->cache_slot.data_sz) 
+    if (seek < f->cache_slot.data_sz) 
     {
         f->seek += 1;
         return f->cache_slot.data[seek];
@@ -83,6 +84,24 @@ int io61_readc(io61_file* f) {
     }
 }
 
+ssize_t io61_readbl(io61_file* f, char* buf, size_t sz) {
+    /* Refill the buffer */
+    while (f->cache_slot.data_sz == 0 || f->seek >= f->cache_slot.data_sz) {
+        f->cache_slot.data_sz = read(f->fd, f->cache_slot.data, BLOCKSIZE);
+
+        if (f->cache_slot.data_sz < 1)
+            return -1;
+        else {
+            f->cache_slot.offset += BLOCKSIZE;
+            f->seek = 0;
+        }
+    }
+
+    memcpy(buf, &f->cache_slot.data[f->seek], sz);
+    f->seek += sz;
+
+    return sz;
+}
 
 // io61_read(f, buf, sz)
 //    Read up to `sz` characters from `f` into `buf`. Returns the number of
@@ -93,26 +112,38 @@ int io61_readc(io61_file* f) {
 ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
     size_t nread = 0;
     while (nread != sz) {
-        if (sz > 1 && sz <= 4096) {
-            size_t r = read(f->fd, buf, sz);
-            if (r != sz)
+        if (sz >= BLOCKSIZE) {
+            size_t bytes_read = read(f->fd, buf, sz);
+            if (bytes_read != sz)
                 break;
             else
-                nread += r;
-        } else {
+                nread += bytes_read;
+        } else if (sz == 1) {
             int ch = io61_readc(f);
             if (ch == EOF)
                 break;
             buf[nread] = ch;
             ++nread;
-       }
+        } else {
+            size_t bytes_total = sz;
+            ssize_t bytes_read = 0;
+
+            while (bytes_total != 0) {
+                if ((bytes_read = io61_readbl(f, buf, sz)) < 0)
+                    return -1;
+                else {
+                    bytes_total -= bytes_read;
+                    nread += bytes_read;
+                }
+            }            
+        }
     }
+
     if (nread != 0 || sz == 0 || io61_eof(f))
         return nread;
     else
         return -1;
 }
-
 
 // io61_writec(f)
 //    Write a single character `ch` to `f`. Returns 0 on success or
@@ -144,6 +175,26 @@ int io61_writec(io61_file* f, int ch) {
     };
 }
 
+ssize_t io61_writebl(io61_file* f, const char* buf, size_t sz) {
+    /* Empty buffer */
+    while (f->cache_slot.data_sz == BLOCKSIZE) {
+        f->cache_slot.data_sz = write(f->fd, f->cache_slot.data, BLOCKSIZE);
+
+        if (f->cache_slot.data_sz < 1)
+            return -1;
+        else {
+            f->cache_slot.offset += BLOCKSIZE;
+            f->cache_slot.data_sz = 0;
+            f->seek = 0;
+        }
+    }
+
+    memcpy(&f->cache_slot.data[f->seek], buf, sz);
+    f->cache_slot.data_sz += sz;
+    f->seek += sz;
+
+    return sz;
+}
 
 // io61_write(f, buf, sz)
 //    Write `sz` characters from `buf` to `f`. Returns the number of
@@ -153,24 +204,36 @@ int io61_writec(io61_file* f, int ch) {
 ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
     size_t nwritten = 0;
     while (nwritten != sz) {
-        if (sz > 1 && sz <= 4096) {
+        if (sz >= BLOCKSIZE) {
             size_t r = write(f->fd, buf, sz);
-        if (r != sz)
-            break;
-        else
-            nwritten += r;
-        } else {
+            if (r != sz)
+                break;
+            else
+                nwritten += r;
+        } else if (sz == 1) {
             if (io61_writec(f, buf[nwritten]) == -1)
                 break;
             ++nwritten;
+        } else {
+            size_t bytes_total = sz;
+            ssize_t bytes_written = 0;
+
+            while (bytes_total != 0) {
+                if ((bytes_written = io61_writebl(f, buf, sz)) < 0)
+                    return -1;
+                else {
+                    bytes_total -= bytes_written;
+                    nwritten += bytes_written;
+                }
+            }            
         }
     }
+
     if (nwritten != 0 || sz == 0)
         return nwritten;
     else
         return -1;
 }
-
 
 // io61_flush(f)
 //    Forces a write of all buffered data written to `f`.
