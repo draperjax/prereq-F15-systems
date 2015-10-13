@@ -4,7 +4,7 @@
 #include <limits.h>
 #include <errno.h>
 
-#define BLOCKSIZE 4096
+#define BLOCKSIZE 8192
 // io61.c
 //    YOUR CODE HERE!
 
@@ -14,6 +14,7 @@
 
 struct io61_file {
     int fd;
+    int mode;
     size_t seek;
     struct {
         size_t offset;
@@ -34,6 +35,7 @@ io61_file* io61_fdopen(int fd, int mode) {
     assert(fd >= 0);
     io61_file* f = (io61_file*) malloc(sizeof(io61_file));
     io61_initb(f,fd);
+    f->mode = mode;
     (void) mode;
     return f;
 }
@@ -50,11 +52,6 @@ void io61_initb(io61_file* f, int fd) {
 //    any buffers.
 
 int io61_close(io61_file* f) {
-    if (f->cache_slot.data_sz > 0) {
-        write(f->fd, f->cache_slot.data, f->cache_slot.data_sz);
-        f->cache_slot.data_sz = 0;
-        f->seek = 0;
-    }
     io61_flush(f);
     int r = close(f->fd);
     free(f);
@@ -86,16 +83,21 @@ int io61_readc(io61_file* f) {
 
 ssize_t io61_readbl(io61_file* f, char* buf, size_t sz) {
     /* Refill the buffer */
-    while (f->cache_slot.data_sz == 0 || f->seek >= f->cache_slot.data_sz) {
+    while (f->cache_slot.data_sz <= 0 || f->seek + sz > f->cache_slot.data_sz) {
         f->cache_slot.data_sz = read(f->fd, f->cache_slot.data, BLOCKSIZE);
 
         if (f->cache_slot.data_sz < 1)
             return -1;
+        else if (f->cache_slot.data_sz == 0)
+            return 0;
         else {
             f->cache_slot.offset += BLOCKSIZE;
             f->seek = 0;
         }
     }
+
+    if (f->cache_slot.data_sz < sz)
+        sz = f->cache_slot.data_sz;
 
     memcpy(buf, &f->cache_slot.data[f->seek], sz);
     f->seek += sz;
@@ -131,6 +133,8 @@ ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
             while (bytes_total != 0) {
                 if ((bytes_read = io61_readbl(f, buf, sz)) < 0)
                     return -1;
+                else if (bytes_read == 0)
+                    break;
                 else {
                     bytes_total -= bytes_read;
                     nread += bytes_read;
@@ -177,8 +181,8 @@ int io61_writec(io61_file* f, int ch) {
 
 ssize_t io61_writebl(io61_file* f, const char* buf, size_t sz) {
     /* Empty buffer */
-    while (f->cache_slot.data_sz == BLOCKSIZE) {
-        f->cache_slot.data_sz = write(f->fd, f->cache_slot.data, BLOCKSIZE);
+    while (f->cache_slot.data_sz == BLOCKSIZE || f->cache_slot.data_sz + sz > BLOCKSIZE) {
+        f->cache_slot.data_sz = write(f->fd, f->cache_slot.data, f->cache_slot.data_sz);
 
         if (f->cache_slot.data_sz < 1)
             return -1;
@@ -221,6 +225,8 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
             while (bytes_total != 0) {
                 if ((bytes_written = io61_writebl(f, buf, sz)) < 0)
                     return -1;
+                else if (bytes_written == 0)
+                    break;
                 else {
                     bytes_total -= bytes_written;
                     nwritten += bytes_written;
@@ -242,6 +248,13 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
 
 int io61_flush(io61_file* f) {
     (void) f;
+    if (f->cache_slot.data_sz > 0) {
+        ssize_t sz = f->cache_slot.data_sz;
+        if (write(f->fd, f->cache_slot.data, f->cache_slot.data_sz) != sz)
+            return -1;
+        f->cache_slot.data_sz = 0;
+        f->seek = 0;
+    }
     return 0;
 }
 
@@ -251,6 +264,8 @@ int io61_flush(io61_file* f) {
 //    Returns 0 on success and -1 on failure.
 
 int io61_seek(io61_file* f, off_t pos) {
+    if (f->mode == O_WRONLY)
+        io61_flush(f);
     off_t r = lseek(f->fd, (off_t) pos, SEEK_SET);
     if (r == (off_t) pos)
         return 0;
