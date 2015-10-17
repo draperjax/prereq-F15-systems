@@ -15,7 +15,7 @@
 struct io61_file {
     int fd;
     int mode;
-    size_t seek;
+    size_t pos;
     struct {
         size_t offset;
         unsigned char data[BLOCKSIZE];
@@ -42,7 +42,7 @@ io61_file* io61_fdopen(int fd, int mode) {
 
 void io61_initb(io61_file* f, int fd) {
     f->fd = fd;  
-    f->seek = 0;
+    f->pos = 0;
     f->cache_slot.offset = 0;
     f->cache_slot.data_ptr = NULL;
 }
@@ -52,7 +52,8 @@ void io61_initb(io61_file* f, int fd) {
 //    any buffers.
 
 int io61_close(io61_file* f) {
-    io61_flush(f);
+    if (f->mode == O_WRONLY)
+        io61_flush(f);
     int r = close(f->fd);
     free(f);
     return r;
@@ -63,18 +64,18 @@ int io61_close(io61_file* f) {
 //    (which is -1) on error or end-of-file.
 
 int io61_readc(io61_file* f) {
-    size_t seek = f->seek;
-    if (seek < f->cache_slot.data_sz) 
+    size_t pos = f->pos;
+    if (pos < f->cache_slot.data_sz) 
     {
-        f->seek += 1;
-        return f->cache_slot.data[seek];
+        f->pos += 1;
+        return f->cache_slot.data[pos];
     } else {
         f->cache_slot.data_sz = read(f->fd, f->cache_slot.data, BLOCKSIZE);
         if (f->cache_slot.data_sz < 1)
             return EOF;
         else {
             f->cache_slot.offset += f->cache_slot.data_sz;
-            f->seek = 1;
+            f->pos = 1;
             return f->cache_slot.data[0];            
         }
     }
@@ -87,39 +88,34 @@ int io61_readc(io61_file* f) {
 //    -1 an error occurred before any characters were read.
 
 ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
+
     size_t nread = 0;
 
     while (nread != sz) {
-        if (sz >= BLOCKSIZE) {
-            size_t bytes_read = read(f->fd, buf, sz);
-            if (bytes_read != sz)
-                break;
-            else
-                nread += bytes_read;
-        } else if (sz == 1) {
+        if (sz == 1) {
             int ch = io61_readc(f);
             if (ch == EOF)
                 break;
             buf[nread] = ch;
             ++nread;
         } else {
-            if (f->seek != f->cache_slot.data_sz) {
+            if (f->pos != f->cache_slot.data_sz) {
                 size_t n = sz - nread;
 
-                if (n > f->cache_slot.data_sz - f->seek)
-                    n = f->cache_slot.data_sz - f->seek;
+                if (n > f->cache_slot.data_sz - f->pos)
+                    n = f->cache_slot.data_sz - f->pos;
 
-                memcpy(&buf[nread], &f->cache_slot.data[f->seek], n);
+                memcpy(&buf[nread], &f->cache_slot.data[f->pos], n);
                 // printf("      Cache (R) %i\n", n);
 
-                f->seek += n;
+                f->pos += n;
 
-                // printf("      Cache (R) - Position %i\n", f->seek);
+                // printf("      Cache (R) - Position %i\n", f->pos);
                 nread += n;
 
             } else {
                 f->cache_slot.offset += f->cache_slot.data_sz;
-                f->seek = f->cache_slot.data_sz = 0;
+                f->pos = f->cache_slot.data_sz = 0;
                 
                 ssize_t n = read(f->fd, f->cache_slot.data, BLOCKSIZE);
                 
@@ -142,25 +138,25 @@ ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
 
 int io61_writec(io61_file* f, int ch) {
 
-    size_t seek = f->seek;
+    size_t pos = f->pos;
     size_t written = 0;
 
-    if (seek >= BLOCKSIZE) {
+    if (pos >= BLOCKSIZE) {
         written = write(f->fd, f->cache_slot.data, BLOCKSIZE);
 
         if (written == BLOCKSIZE) {
-            f->cache_slot.offset += BLOCKSIZE;
-            seek = 0;
+            f->cache_slot.offset += written;
+            pos = 0;
 
-            f->cache_slot.data[seek] = ch;
-            f->seek = 1;
+            f->cache_slot.data[pos] = ch;
+            f->pos = 1;
             f->cache_slot.data_sz = 1;
             return 0;
         } else
             return -1;
     } else {
-        f->cache_slot.data[seek] = ch;
-        f->seek += 1;
+        f->cache_slot.data[pos] = ch;
+        f->pos += 1;
         f->cache_slot.data_sz += 1;
         return 0;
     };
@@ -176,25 +172,20 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
 
     // printf("      Size (W) %i\n", sz);
     while (nwritten != sz) {
-        if (sz >= BLOCKSIZE) {
-            // printf("      System (W) %i\n", f->cache_slot.data_sz);
-            size_t r = write(f->fd, buf, sz);
-            if (r != sz)
-                break;
-            else
-                nwritten += r;
-        } else if (sz == 1) {
+        if (sz == 1) {
             if (io61_writec(f, buf[nwritten]) == -1)
                 break;
             ++nwritten;
         } else {
             if (f->cache_slot.data_sz >= BLOCKSIZE) {
                 // printf("      System (W) %i\n", f->cache_slot.data_sz);
+
+                // Correct for the offset position if the seek is out of range
                 ssize_t n = write(f->fd, f->cache_slot.data, f->cache_slot.data_sz);
                 if (n > 0) {
-                    f->cache_slot.offset += BLOCKSIZE;
+                    f->cache_slot.offset += n;
                     f->cache_slot.data_sz = 0;
-                    f->seek = 0;
+                    f->pos = 0;
                 } else
                     return nwritten ? nwritten : n;
             }
@@ -205,9 +196,9 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
                 n = BLOCKSIZE - f->cache_slot.data_sz;
 
             // printf("\n      Cache (W) %i\n", n);
-            memcpy(&f->cache_slot.data[f->seek], buf, n);
-            f->seek += n;
-            // printf("      Cache (W) - Position %i\n", f->seek);
+            memcpy(&f->cache_slot.data[f->pos], &buf[nwritten], n);
+            f->pos += n;
+            // printf("      Cache (W) - Position %i\n", f->pos);
             f->cache_slot.data_sz += n;
             nwritten += n;
         }
@@ -229,9 +220,9 @@ int io61_flush(io61_file* f) {
     if (f->cache_slot.data_sz > 0) {
         size_t written = write(f->fd, f->cache_slot.data, f->cache_slot.data_sz);
         if (written > 0) {
-            f->cache_slot.offset += BLOCKSIZE;
+            f->cache_slot.offset += written;
             f->cache_slot.data_sz = 0;
-            f->seek = 0;
+            f->pos = 0;
         } else
             return -1;
     }
@@ -245,17 +236,17 @@ int io61_flush(io61_file* f) {
 //    Returns 0 on success and -1 on failure.
 
 int io61_seek(io61_file* f, off_t pos) {
-    // if (f->mode == O_WRONLY)
-    //     io61_flush(f);
+    if (f->mode == O_WRONLY)
+        io61_flush(f);
 
     if (pos >= (off_t) f->cache_slot.offset && pos <= (off_t) f->cache_slot.offset + (off_t) f->cache_slot.data_sz)
     {
-        f->seek = pos - f->cache_slot.offset;
+        f->pos = pos - f->cache_slot.offset;
         return 0;
     } else {
         off_t r = lseek(f->fd, (off_t) pos, SEEK_SET);
         if (r == (off_t) pos) {
-            f->seek = f->cache_slot.data_sz = 0;
+            f->pos = f->cache_slot.data_sz = 0;
             f->cache_slot.offset = pos;
             return 0;
         } else
