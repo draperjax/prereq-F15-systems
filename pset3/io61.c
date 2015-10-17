@@ -4,7 +4,7 @@
 #include <limits.h>
 #include <errno.h>
 
-#define BLOCKSIZE 8192
+#define BLOCKSIZE 4096
 // io61.c
 //    YOUR CODE HERE!
 
@@ -44,7 +44,7 @@ void io61_initb(io61_file* f, int fd) {
     f->fd = fd;  
     f->seek = 0;
     f->cache_slot.offset = 0;
-    f->cache_slot.data_ptr = f->cache_slot.data;
+    f->cache_slot.data_ptr = NULL;
 }
 
 // io61_close(f)
@@ -57,7 +57,6 @@ int io61_close(io61_file* f) {
     free(f);
     return r;
 }
-
 
 // io61_readc(f)
 //    Read a single (unsigned) character from `f` and return it. Returns EOF
@@ -74,35 +73,11 @@ int io61_readc(io61_file* f) {
         if (f->cache_slot.data_sz < 1)
             return EOF;
         else {
-            f->cache_slot.offset += BLOCKSIZE;
+            f->cache_slot.offset += f->cache_slot.data_sz;
             f->seek = 1;
             return f->cache_slot.data[0];            
         }
     }
-}
-
-ssize_t io61_readbl(io61_file* f, char* buf, size_t sz) {
-    /* Refill the buffer */
-    while (f->cache_slot.data_sz <= 0 || f->seek + sz > f->cache_slot.data_sz) {
-        f->cache_slot.data_sz = read(f->fd, f->cache_slot.data, BLOCKSIZE);
-
-        if (f->cache_slot.data_sz < 1)
-            return -1;
-        else if (f->cache_slot.data_sz == 0)
-            return 0;
-        else {
-            f->cache_slot.offset += BLOCKSIZE;
-            f->seek = 0;
-        }
-    }
-
-    if (f->cache_slot.data_sz < sz)
-        sz = f->cache_slot.data_sz;
-
-    memcpy(buf, &f->cache_slot.data[f->seek], sz);
-    f->seek += sz;
-
-    return sz;
 }
 
 // io61_read(f, buf, sz)
@@ -113,6 +88,7 @@ ssize_t io61_readbl(io61_file* f, char* buf, size_t sz) {
 
 ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
     size_t nread = 0;
+
     while (nread != sz) {
         if (sz >= BLOCKSIZE) {
             size_t bytes_read = read(f->fd, buf, sz);
@@ -127,26 +103,37 @@ ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
             buf[nread] = ch;
             ++nread;
         } else {
-            size_t bytes_total = sz;
-            ssize_t bytes_read = 0;
+            if (f->seek != f->cache_slot.data_sz) {
+                size_t n = sz - nread;
 
-            while (bytes_total != 0) {
-                if ((bytes_read = io61_readbl(f, buf, sz)) < 0)
-                    return -1;
-                else if (bytes_read == 0)
-                    break;
-                else {
-                    bytes_total -= bytes_read;
-                    nread += bytes_read;
-                }
-            }            
+                if (n > f->cache_slot.data_sz - f->seek)
+                    n = f->cache_slot.data_sz - f->seek;
+
+                memcpy(&buf[nread], &f->cache_slot.data[f->seek], n);
+                // printf("      Cache (R) %i\n", n);
+
+                f->seek += n;
+
+                // printf("      Cache (R) - Position %i\n", f->seek);
+                nread += n;
+
+            } else {
+                f->cache_slot.offset += f->cache_slot.data_sz;
+                f->seek = f->cache_slot.data_sz = 0;
+                
+                ssize_t n = read(f->fd, f->cache_slot.data, BLOCKSIZE);
+                
+                if (n > 0) {
+                    // printf("      System (R) %i\n", n);
+                    f->cache_slot.data_sz = n;
+                } else
+                    return nread ? nread : n;
+            }
         }
     }
 
-    if (nread != 0 || sz == 0 || io61_eof(f))
-        return nread;
-    else
-        return -1;
+    return nread;
+
 }
 
 // io61_writec(f)
@@ -179,27 +166,6 @@ int io61_writec(io61_file* f, int ch) {
     };
 }
 
-ssize_t io61_writebl(io61_file* f, const char* buf, size_t sz) {
-    /* Empty buffer */
-    while (f->cache_slot.data_sz == BLOCKSIZE || f->cache_slot.data_sz + sz > BLOCKSIZE) {
-        f->cache_slot.data_sz = write(f->fd, f->cache_slot.data, f->cache_slot.data_sz);
-
-        if (f->cache_slot.data_sz < 1)
-            return -1;
-        else {
-            f->cache_slot.offset += BLOCKSIZE;
-            f->cache_slot.data_sz = 0;
-            f->seek = 0;
-        }
-    }
-
-    memcpy(&f->cache_slot.data[f->seek], buf, sz);
-    f->cache_slot.data_sz += sz;
-    f->seek += sz;
-
-    return sz;
-}
-
 // io61_write(f, buf, sz)
 //    Write `sz` characters from `buf` to `f`. Returns the number of
 //    characters written on success; normally this is `sz`. Returns -1 if
@@ -207,8 +173,11 @@ ssize_t io61_writebl(io61_file* f, const char* buf, size_t sz) {
 
 ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
     size_t nwritten = 0;
+
+    // printf("      Size (W) %i\n", sz);
     while (nwritten != sz) {
         if (sz >= BLOCKSIZE) {
+            // printf("      System (W) %i\n", f->cache_slot.data_sz);
             size_t r = write(f->fd, buf, sz);
             if (r != sz)
                 break;
@@ -219,19 +188,28 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
                 break;
             ++nwritten;
         } else {
-            size_t bytes_total = sz;
-            ssize_t bytes_written = 0;
+            if (f->cache_slot.data_sz >= BLOCKSIZE) {
+                // printf("      System (W) %i\n", f->cache_slot.data_sz);
+                ssize_t n = write(f->fd, f->cache_slot.data, f->cache_slot.data_sz);
+                if (n > 0) {
+                    f->cache_slot.offset += BLOCKSIZE;
+                    f->cache_slot.data_sz = 0;
+                    f->seek = 0;
+                } else
+                    return nwritten ? nwritten : n;
+            }
 
-            while (bytes_total != 0) {
-                if ((bytes_written = io61_writebl(f, buf, sz)) < 0)
-                    return -1;
-                else if (bytes_written == 0)
-                    break;
-                else {
-                    bytes_total -= bytes_written;
-                    nwritten += bytes_written;
-                }
-            }            
+            size_t n = sz - nwritten;
+
+            if (n > BLOCKSIZE - f->cache_slot.data_sz)
+                n = BLOCKSIZE - f->cache_slot.data_sz;
+
+            // printf("\n      Cache (W) %i\n", n);
+            memcpy(&f->cache_slot.data[f->seek], buf, n);
+            f->seek += n;
+            // printf("      Cache (W) - Position %i\n", f->seek);
+            f->cache_slot.data_sz += n;
+            nwritten += n;
         }
     }
 
@@ -249,14 +227,17 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
 int io61_flush(io61_file* f) {
     (void) f;
     if (f->cache_slot.data_sz > 0) {
-        ssize_t sz = f->cache_slot.data_sz;
-        if (write(f->fd, f->cache_slot.data, f->cache_slot.data_sz) != sz)
+        size_t written = write(f->fd, f->cache_slot.data, f->cache_slot.data_sz);
+        if (written > 0) {
+            f->cache_slot.offset += BLOCKSIZE;
+            f->cache_slot.data_sz = 0;
+            f->seek = 0;
+        } else
             return -1;
-        f->cache_slot.data_sz = 0;
-        f->seek = 0;
     }
     return 0;
 }
+
 
 
 // io61_seek(f, pos)
@@ -264,13 +245,22 @@ int io61_flush(io61_file* f) {
 //    Returns 0 on success and -1 on failure.
 
 int io61_seek(io61_file* f, off_t pos) {
-    if (f->mode == O_WRONLY)
-        io61_flush(f);
-    off_t r = lseek(f->fd, (off_t) pos, SEEK_SET);
-    if (r == (off_t) pos)
+    // if (f->mode == O_WRONLY)
+    //     io61_flush(f);
+
+    if (pos >= (off_t) f->cache_slot.offset && pos <= (off_t) f->cache_slot.offset + (off_t) f->cache_slot.data_sz)
+    {
+        f->seek = pos - f->cache_slot.offset;
         return 0;
-    else
-        return -1;
+    } else {
+        off_t r = lseek(f->fd, (off_t) pos, SEEK_SET);
+        if (r == (off_t) pos) {
+            f->seek = f->cache_slot.data_sz = 0;
+            f->cache_slot.offset = pos;
+            return 0;
+        } else
+            return -1;
+    }
 }
 
 
