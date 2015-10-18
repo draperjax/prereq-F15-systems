@@ -16,9 +16,12 @@ struct io61_file {
     int fd;
     int mode;
     size_t pos;
+    size_t buffer_sz;
+    size_t block_sz;
+
     struct {
         size_t offset;
-        unsigned char data[BLOCKSIZE];
+        unsigned char* data;
         void* data_ptr;
         size_t data_sz;
     } cache_slot;
@@ -44,7 +47,16 @@ void io61_initb(io61_file* f, int fd) {
     f->fd = fd;  
     f->pos = 0;
     f->cache_slot.offset = 0;
-    f->cache_slot.data_ptr = NULL;
+
+    off_t block_sz = io61_blocksize(f);
+    if(block_sz > 0) {
+        f->block_sz = block_sz;
+        f->buffer_sz = block_sz;
+    } else {
+        f->buffer_sz = BLOCKSIZE;
+    }
+
+    f->cache_slot.data = (unsigned char *) malloc(f->buffer_sz * sizeof (char));
 }
 
 // io61_close(f)
@@ -59,6 +71,13 @@ int io61_close(io61_file* f) {
     return r;
 }
 
+size_t io61_blocksize(io61_file* f) {
+    struct stat file_info;
+    if (fstat(f->fd, &file_info) != 0)
+        return 0;
+    else
+        return file_info.st_blksize;
+}
 // io61_readc(f)
 //    Read a single (unsigned) character from `f` and return it. Returns EOF
 //    (which is -1) on error or end-of-file.
@@ -70,7 +89,7 @@ int io61_readc(io61_file* f) {
         f->pos += 1;
         return f->cache_slot.data[pos];
     } else {
-        f->cache_slot.data_sz = read(f->fd, f->cache_slot.data, BLOCKSIZE);
+        f->cache_slot.data_sz = read(f->fd, f->cache_slot.data, f->buffer_sz);
         if (f->cache_slot.data_sz < 1)
             return EOF;
         else {
@@ -117,7 +136,7 @@ ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
                 f->cache_slot.offset += f->cache_slot.data_sz;
                 f->pos = f->cache_slot.data_sz = 0;
                 
-                ssize_t n = read(f->fd, f->cache_slot.data, BLOCKSIZE);
+                ssize_t n = read(f->fd, f->cache_slot.data, f->buffer_sz);
                 
                 if (n > 0) {
                     // printf("      System (R) %i\n", n);
@@ -141,10 +160,10 @@ int io61_writec(io61_file* f, int ch) {
     size_t pos = f->pos;
     size_t written = 0;
 
-    if (pos >= BLOCKSIZE) {
-        written = write(f->fd, f->cache_slot.data, BLOCKSIZE);
+    if (pos >= f->buffer_sz) {
+        written = write(f->fd, f->cache_slot.data, f->buffer_sz);
 
-        if (written == BLOCKSIZE) {
+        if (written == f->buffer_sz) {
             f->cache_slot.offset += written;
             pos = 0;
 
@@ -177,7 +196,7 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
                 break;
             ++nwritten;
         } else {
-            if (f->cache_slot.data_sz >= BLOCKSIZE) {
+            if (f->cache_slot.data_sz >= f->buffer_sz) {
                 // printf("      System (W) %i\n", f->cache_slot.data_sz);
 
                 // Correct for the offset position if the seek is out of range
@@ -236,22 +255,33 @@ int io61_flush(io61_file* f) {
 //    Returns 0 on success and -1 on failure.
 
 int io61_seek(io61_file* f, off_t pos) {
-    if (f->mode == O_WRONLY)
+    off_t r = 0;
+    if (f->mode == O_RDONLY) {
+        if (pos >= (off_t) f->cache_slot.offset && 
+            pos <= (off_t) f->cache_slot.offset + (off_t) f->cache_slot.data_sz) {
+            f->pos = pos - f->cache_slot.offset;
+            return 0;
+        } else {
+            r = lseek(f->fd, (off_t) pos, SEEK_SET);
+            if (r == (off_t) pos) {
+                f->pos = f->cache_slot.data_sz = 0;
+                f->cache_slot.offset = pos;
+                return 0;
+            } else
+                return -1;
+        }
+    } else if (f->mode == O_WRONLY) {
         io61_flush(f);
 
-    if (pos >= (off_t) f->cache_slot.offset && pos <= (off_t) f->cache_slot.offset + (off_t) f->cache_slot.data_sz)
-    {
-        f->pos = pos - f->cache_slot.offset;
-        return 0;
-    } else {
-        off_t r = lseek(f->fd, (off_t) pos, SEEK_SET);
-        if (r == (off_t) pos) {
-            f->pos = f->cache_slot.data_sz = 0;
-            f->cache_slot.offset = pos;
+        r = lseek(f->fd, (off_t) pos, SEEK_SET);
+
+        if (r == (off_t) pos)
             return 0;
-        } else
+        else
             return -1;
     }
+
+    return 0;
 }
 
 

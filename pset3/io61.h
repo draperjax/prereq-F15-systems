@@ -16,6 +16,7 @@ io61_file* io61_open_check(const char* filename, int mode);
 int io61_close(io61_file* f);
 
 off_t io61_filesize(io61_file* f);
+size_t io61_blocksize(io61_file* f);
 
 int io61_seek(io61_file* f, off_t pos);
 
