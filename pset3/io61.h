@@ -21,7 +21,6 @@ size_t io61_blocksize(io61_file* f);
 io61_file* io61_mmap(int fd, int mode);
 
 ssize_t mmap_read(io61_file* f, char* buf, size_t sz);
-int mmap_readc(io61_file* f);
 int io61_mmap_seek(io61_file* f, off_t pos);
 
 int io61_seek(io61_file* f, off_t pos);

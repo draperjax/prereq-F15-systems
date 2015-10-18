@@ -5,33 +5,36 @@
 #include <limits.h>
 #include <errno.h>
 
+/* Default Buffer Size & Maximum MMAP Size - selected after 
+    performance testing */
 #define BLOCKSIZE 4096
 #define MMAP_MAX 3145728
 
+/* IO61 Data Structure */
 struct io61_file {
     int fd;
     int mode;
+
+    /* Current Position in Buffer */
     size_t pos;
+    
+    /* Buffer Size, adjustable if blocks passed in */
     size_t buffer_sz;
+
+    /* User input block size & detected file size */
     size_t block_sz;
     off_t file_sz;
 
+    /* MMap Pointer & Offset */
     char* mmap_ptr;
     off_t mmap_offset;
 
+    /* Cache Data Stucture */
     struct {
         size_t offset;
         unsigned char* data;
-        void* data_ptr;
         size_t data_sz;
-    } read_cache_slot;
-
-    struct {
-        size_t offset;
-        unsigned char* data;
-        void* data_ptr;
-        size_t data_sz;
-    } write_cache_slot;
+    } cache_slot;
 };
 
 
@@ -43,8 +46,10 @@ struct io61_file {
 
 io61_file* io61_fdopen(int fd, int mode) {
     
+    /* Initialize Caching Structure via MMAP Init */
     io61_file* f = io61_mmap(fd, mode);
 
+    /* If MMAP Init fails, use IO61 Init */
     if (f != NULL) {
         return f;
     } else {
@@ -60,10 +65,12 @@ io61_file* io61_initb(int fd, int mode) {
     f->mode = mode;
     f->pos = 0;
 
+    /* Store File size */
     off_t file_sz = io61_filesize(f);
     if (file_sz >= 0)
         f->file_sz = file_sz;
 
+    /* Store Block size */
     off_t block_sz = io61_blocksize(f);
     if (block_sz > 0) {
         f->block_sz = block_sz;
@@ -72,31 +79,33 @@ io61_file* io61_initb(int fd, int mode) {
         f->buffer_sz = BLOCKSIZE;
     }
     
-    if (mode == O_WRONLY) {
-        f->write_cache_slot.data = (unsigned char *) malloc(f->buffer_sz * sizeof (char));
-        f->write_cache_slot.offset = 0;
-        f->pos = 0;
-        f->write_cache_slot.data_ptr = f->write_cache_slot.data;
-    } else {
-        f->read_cache_slot.data = (unsigned char *) malloc(f->buffer_sz * sizeof (char));
-        f->read_cache_slot.offset = 0;
-    }
+    /* Allocate memory for buffer */
+    f->cache_slot.data = (unsigned char *) malloc(f->buffer_sz * sizeof (char));
+    f->cache_slot.offset = 0;
 
     return f;
 }
 
 io61_file* io61_mmap(int fd, int mode) {
-    if (mode == O_RDONLY) 
-    {
+    if (mode == O_RDONLY) {
         io61_file* f = io61_initb(fd,mode);
-        f->read_cache_slot.data = NULL;
+        f->cache_slot.data = NULL;
 
+        /* Check if file size is less than MMAP Max, and if so free structure & 
+            return NULL to force use of IO61 Init. */
         if (f->file_sz <= MMAP_MAX) {
             free(f);
             return NULL;
         }
 
-        f->mmap_ptr = mmap(NULL, f->file_sz, PROT_READ, MAP_PRIVATE | MAP_POPULATE, f->fd, 0);
+        /* Setup MMAP - 
+            Desired Memory Protection: PROT_READ - Pages may be read
+            Flags: 
+                MMAP_PRIVATE: Protects mapping from other processes.
+                MMAP_POPULATE: Reads ahead in file. */
+        f->mmap_ptr = mmap(NULL, f->file_sz, PROT_READ, 
+            MAP_PRIVATE | MAP_POPULATE, f->fd, 0);
+
         f->mmap_offset = 0;
 
         return f;
@@ -110,65 +119,77 @@ io61_file* io61_mmap(int fd, int mode) {
 //    any buffers.
 
 int io61_close(io61_file* f) {
+
+    /* If open for write, flush cache before closing. */
     if (f->mode == O_WRONLY)
         io61_flush(f);
+
     int r = close(f->fd);
     free(f);
     return r;
 }
 
 size_t io61_blocksize(io61_file* f) {
+    /* Per guidelines to avoid adjustment to io61_filesize, this function 
+        performs similarly to capture blocksize. */
     struct stat file_info;
-    if (fstat(f->fd, &file_info) != 0)
-        return 0;
-    else
+    int r = fstat(f->fd, &file_info);
+    if (r >= 0 && S_ISREG(file_info.st_mode))
         return file_info.st_blksize;
+    else
+        return 0;
 }
+
 // io61_readc(f)
 //    Read a single (unsigned) character from `f` and return it. Returns EOF
 //    (which is -1) on error or end-of-file.
-
 int io61_readc(io61_file* f) {
 
-    if(f->mmap_ptr != NULL)
-        return mmap_readc(f);
+    /* Always check mmap first -- speeds up time */
+    if(f->mmap_ptr != NULL) {
+        if(f->mmap_offset == f->file_sz)
+            return EOF;
+        f->mmap_offset++;
+        return *f->mmap_ptr++;
+    }
 
+    /* If Mapping does not exist, then leverage standard caching method */
     size_t pos = f->pos;
-    if (pos < f->read_cache_slot.data_sz) 
-    {
+
+    /* Check if position is less than the size of the data in the cache */
+    if (pos < f->cache_slot.data_sz) {
         f->pos += 1;
-        return f->read_cache_slot.data[pos];
+        return f->cache_slot.data[pos];
     } else {
-        f->read_cache_slot.data_sz = read(f->fd, f->read_cache_slot.data, f->buffer_sz);
-        if (f->read_cache_slot.data_sz < 1)
+        /* Attempt a system read to refill the buffer */
+        f->cache_slot.data_sz = read(f->fd, f->cache_slot.data, f->buffer_sz);
+        
+        /* If nothing is returned, signal end of file */
+        if (f->cache_slot.data_sz == 0)
             return EOF;
         else {
-            f->read_cache_slot.offset += f->read_cache_slot.data_sz;
+            /* Else, incrememnt the offset of the cache, reset the position 
+                and return the first character. */
+            f->cache_slot.offset += f->cache_slot.data_sz;
             f->pos = 1;
-            return f->read_cache_slot.data[0];            
+            return f->cache_slot.data[0];            
         }
     }
-}
-
-int mmap_readc(io61_file* f) {
-    if(f->mmap_offset == f->file_sz) {
-        return EOF;
-    }
-
-    f->mmap_offset++;
-    return (unsigned char)*f->mmap_ptr++;
 }
 
 ssize_t mmap_read(io61_file* f, char* buf, size_t sz) 
 {
     size_t n = sz;
-    if ((size_t) f->file_sz < (size_t) f->mmap_offset + sz)
-    {
+
+    /* Check if size requested is more than file size and if so, adjust. */
+    if ((size_t) f->file_sz < (size_t) f->mmap_offset + sz) {
         n = f->file_sz - f->mmap_offset;
     }
 
+    /* Copy n bytes from MMAP Pointer position to User's Buffer. */
     memcpy(buf, f->mmap_ptr, n);
 
+    /* Increment the MMAP Pointer and Offset. */
     f->mmap_ptr += n;
     f->mmap_offset += n;
 
@@ -183,52 +204,57 @@ ssize_t mmap_read(io61_file* f, char* buf, size_t sz)
 
 ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
     
-    if(f->mmap_ptr != NULL) 
-    {
+    /* Always check mmap first -- speeds up time */
+    if(f->mmap_ptr != NULL) {
         return mmap_read(f, buf, sz);
     }
 
     size_t nread = 0;
 
+    /* Loop through until the amount read equals size. */
     while (nread != sz) {
         if (sz == 1) {
+            /* If requested a single character, use io61_readc */
             int ch = io61_readc(f);
+
             if (ch == EOF)
                 break;
+            
+            /* Set value of current position in user buffer to 
+                character returned from cache. */
             buf[nread] = ch;
+
             ++nread;
         } else {
-            if (f->pos != f->read_cache_slot.data_sz) {
+            /* If we haven't reached the end of the buffer, then read */
+            if (f->pos != f->cache_slot.data_sz) {
                 size_t n = sz - nread;
 
-                if (n > f->read_cache_slot.data_sz - f->pos)
-                    n = f->read_cache_slot.data_sz - f->pos;
+                if (n > f->cache_slot.data_sz - f->pos)
+                    n = f->cache_slot.data_sz - f->pos;
 
-                memcpy(&buf[nread], &f->read_cache_slot.data[f->pos], n);
-                // printf("      Cache (R) %i\n", n);
-
+                memcpy(&buf[nread], &f->cache_slot.data[f->pos], n);
                 f->pos += n;
-
-                // printf("      Cache (R) - Position %i\n", f->pos);
                 nread += n;
-
             } else {
-                f->read_cache_slot.offset += f->read_cache_slot.data_sz;
-                f->pos = f->read_cache_slot.data_sz = 0;
+                /* At end of buffer, so make another read & shift offset */
+                f->cache_slot.offset += f->cache_slot.data_sz;
+                f->pos = f->cache_slot.data_sz = 0;
                 
-                ssize_t n = read(f->fd, f->read_cache_slot.data, f->buffer_sz);
+                ssize_t n = read(f->fd, f->cache_slot.data, f->buffer_sz);
                 
                 if (n > 0) {
-                    // printf("      System (R) %i\n", n);
-                    f->read_cache_slot.data_sz = n;
-                } else
-                    return nread ? nread : n;
+                    f->cache_slot.data_sz = n;
+                } else {
+                    if (nread > 0)
+                        return nread;
+                    else
+                        return n;
+                }
             }
         }
     }
-
     return nread;
-
 }
 
 // io61_writec(f)
@@ -236,29 +262,25 @@ ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
 //    -1 on error.
 
 int io61_writec(io61_file* f, int ch) {
-
-    size_t pos = f->pos;
     size_t written = 0;
 
-    if (pos >= f->buffer_sz) {
-        written = write(f->fd, f->write_cache_slot.data, f->buffer_sz);
+    /* If at buffer end, flush/reset cache and shift offset */
+    if (f->pos >= f->buffer_sz) {
+        written = write(f->fd, f->cache_slot.data, f->buffer_sz);
 
         if (written == f->buffer_sz) {
-            f->write_cache_slot.offset += written;
-            pos = 0;
-
-            f->write_cache_slot.data[pos] = ch;
-            f->pos = 1;
-            f->write_cache_slot.data_sz = 1;
-            return 0;
+            f->cache_slot.offset += written;
+            f->cache_slot.data_sz = 0;
+            f->pos = 0;
         } else
             return -1;
-    } else {
-        f->write_cache_slot.data[pos] = ch;
-        f->pos += 1;
-        f->write_cache_slot.data_sz += 1;
-        return 0;
-    };
+    }
+
+    /* Write the next character to cache & increment cache size. */
+    f->cache_slot.data[f->pos] = ch;
+    f->pos += 1;
+    f->cache_slot.data_sz += 1;
+    return 0;
 }
 
 // io61_write(f, buf, sz)
@@ -269,36 +291,31 @@ int io61_writec(io61_file* f, int ch) {
 ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
     size_t nwritten = 0;
 
-    // printf("      Size (W) %i\n", sz);
+    /* Loop through until the amount written equals size. */
     while (nwritten != sz) {
         if (sz == 1) {
             if (io61_writec(f, buf[nwritten]) == -1)
                 break;
             ++nwritten;
         } else {
-            if (f->write_cache_slot.data_sz >= f->buffer_sz) {
-                // printf("      System (W) %i\n", f->cache_slot.data_sz);
-
-                // Correct for the offset position if the seek is out of range
-                ssize_t n = write(f->fd, f->write_cache_slot.data, f->write_cache_slot.data_sz);
-                if (n > 0) {
-                    f->write_cache_slot.offset += n;
-                    f->write_cache_slot.data_sz = 0;
-                    f->pos = 0;
-                } else
-                    return nwritten ? nwritten : n;
+            /* If at buffer end, flush/reset cache and shift offset */
+            if (f->cache_slot.data_sz >= f->buffer_sz) {
+                ssize_t n = io61_flush(f);
+                if (n < 0)
+                    return nwritten;
             }
 
+            /* Adjust to only write size not yet written. */
             size_t n = sz - nwritten;
 
-            if (n > BLOCKSIZE - f->write_cache_slot.data_sz)
-                n = BLOCKSIZE - f->write_cache_slot.data_sz;
+            /* Adjust to only write size remaining in buffer. */
+            if (n > BLOCKSIZE - f->cache_slot.data_sz)
+                n = BLOCKSIZE - f->cache_slot.data_sz;
 
-            // printf("\n      Cache (W) %i\n", n);
-            memcpy(&f->write_cache_slot.data[f->pos], &buf[nwritten], n);
+            /* Copy n bytes from Cache to User's Buffer. */
+            memcpy(&f->cache_slot.data[f->pos], &buf[nwritten], n);
             f->pos += n;
-            // printf("      Cache (W) - Position %i\n", f->pos);
-            f->write_cache_slot.data_sz += n;
+            f->cache_slot.data_sz += n;
             nwritten += n;
         }
     }
@@ -315,22 +332,23 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
 //    data buffered for reading, or do nothing.
 
 int io61_flush(io61_file* f) {
-    (void) f;
+
+    /* If file open for write, make system write, 
+        reset buffer & buffer position. */
     if (f->mode == O_WRONLY) {
-        if (f->write_cache_slot.data_sz > 0) {
-            size_t written = write(f->fd, f->write_cache_slot.data, f->write_cache_slot.data_sz);
+        if (f->cache_slot.data_sz > 0) {
+            size_t written = write(f->fd, f->cache_slot.data, f->cache_slot.data_sz);
             if (written > 0) {
-                f->write_cache_slot.offset += written;
-                f->write_cache_slot.data_sz = 0;
+                f->cache_slot.offset += written;
+                f->cache_slot.data_sz = 0;
                 f->pos = 0;
+                return written;
             } else
                 return -1;
         }
     }
     return 0;
 }
-
-
 
 // io61_seek(f, pos)
 //    Change the file pointer for file `f` to `pos` bytes into the file.
@@ -339,24 +357,27 @@ int io61_flush(io61_file* f) {
 int io61_seek(io61_file* f, off_t pos) {
     off_t r = 0;
 
+    /* If using MMAP, leverage MMAP Seek. */
     if (f->mmap_ptr != NULL && f->mode == O_RDONLY)
         return io61_mmap_seek(f, pos);
 
+    /* If file open for read, and within cache bounds, seek. */
     if (f->mode == O_RDONLY) {
-        if (pos >= (off_t) f->read_cache_slot.offset && 
-            pos <= (off_t) f->read_cache_slot.offset + (off_t) f->read_cache_slot.data_sz) {
-            f->pos = pos - f->read_cache_slot.offset;
+        if (pos >= (off_t) f->cache_slot.offset && 
+            pos <= (off_t) f->cache_slot.offset + (off_t) f->cache_slot.data_sz) {
+            f->pos = pos - f->cache_slot.offset;
             return 0;
         } else {
             r = lseek(f->fd, (off_t) pos, SEEK_SET);
             if (r == (off_t) pos) {
-                f->pos = f->read_cache_slot.data_sz = 0;
-                f->read_cache_slot.offset = pos;
+                f->pos = f->cache_slot.data_sz = 0;
+                f->cache_slot.offset = pos;
                 return 0;
             } else
                 return -1;
         }
     } else if (f->mode == O_WRONLY) {
+        /* If file open for write, flush then seek. */
         io61_flush(f);
 
         r = lseek(f->fd, (off_t) pos, SEEK_SET);
@@ -372,10 +393,12 @@ int io61_seek(io61_file* f, off_t pos) {
 
 int io61_mmap_seek(io61_file* f, off_t pos) 
 {
+    /* If position is out of range, return -1. */
     if(pos < 0 || pos > f->file_sz) {
         return -1;
     }
 
+    /* Otherwise, adjust the MMAP pointer & Offset. */
     f->mmap_ptr += (pos - f->mmap_offset);
     f->mmap_offset = pos;
 

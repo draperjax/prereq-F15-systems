@@ -14,8 +14,11 @@ NOTES FOR THE GRADER (if any):
 
 DO NOT GRADE: APPLYING LATE HOURS
 
+Stylistic Decisions: 
+	- MMAP MAX: I chose to setup a max for the MMAP use, which after testing I settled on a 3 MB. I'm not confident this is the ideal value, but in combination with my buffer size, this saw the best times.
+	- Buffer Size: I tested with many values here, 4096 performed the best so I settled with that value! Larger buffers didn't actually result in better times across the tests and I was optimizing for better performance across all the tests.  
 
-MOST RECENT OUTPUT ON MY LOCAL MACHINE:
+Most Recent output on my local machine:
 jharvard@appliance (~/Dropbox/CS61/jishajacob-cs61-psets/pset3): make check
 MAKE=1 perl check.pl
 TEST:      1. regular small file, character I/O, sequential
