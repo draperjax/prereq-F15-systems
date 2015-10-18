@@ -10,13 +10,19 @@
 typedef struct io61_file io61_file;
 
 io61_file* io61_fdopen(int fd, int mode);
-void io61_initb(io61_file* f, int fd);
+io61_file* io61_initb(int fd, int mode);
 
 io61_file* io61_open_check(const char* filename, int mode);
 int io61_close(io61_file* f);
 
 off_t io61_filesize(io61_file* f);
 size_t io61_blocksize(io61_file* f);
+
+io61_file* io61_mmap(int fd, int mode);
+
+ssize_t mmap_read(io61_file* f, char* buf, size_t sz);
+int mmap_readc(io61_file* f);
+int io61_mmap_seek(io61_file* f, off_t pos);
 
 int io61_seek(io61_file* f, off_t pos);
 

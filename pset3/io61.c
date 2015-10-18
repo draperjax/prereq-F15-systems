@@ -1,16 +1,12 @@
 #include "io61.h"
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <limits.h>
 #include <errno.h>
 
 #define BLOCKSIZE 4096
-// io61.c
-//    YOUR CODE HERE!
-
-
-// io61_file
-//    Data structure for io61 file wrappers. Add your own stuff.
+#define MMAP_MAX 3145728
 
 struct io61_file {
     int fd;
@@ -18,13 +14,24 @@ struct io61_file {
     size_t pos;
     size_t buffer_sz;
     size_t block_sz;
+    off_t file_sz;
+
+    char* mmap_ptr;
+    off_t mmap_offset;
 
     struct {
         size_t offset;
         unsigned char* data;
         void* data_ptr;
         size_t data_sz;
-    } cache_slot;
+    } read_cache_slot;
+
+    struct {
+        size_t offset;
+        unsigned char* data;
+        void* data_ptr;
+        size_t data_sz;
+    } write_cache_slot;
 };
 
 
@@ -35,28 +42,67 @@ struct io61_file {
 //    files.
 
 io61_file* io61_fdopen(int fd, int mode) {
-    assert(fd >= 0);
-    io61_file* f = (io61_file*) malloc(sizeof(io61_file));
-    io61_initb(f,fd);
-    f->mode = mode;
-    (void) mode;
-    return f;
+    
+    io61_file* f = io61_mmap(fd, mode);
+
+    if (f != NULL) {
+        return f;
+    } else {
+        io61_file* f = io61_initb(fd, mode);
+        return f;
+    }
 }
 
-void io61_initb(io61_file* f, int fd) {
+io61_file* io61_initb(int fd, int mode) {
+    io61_file* f = (io61_file*) malloc(sizeof(io61_file));
+
     f->fd = fd;  
+    f->mode = mode;
     f->pos = 0;
-    f->cache_slot.offset = 0;
+
+    off_t file_sz = io61_filesize(f);
+    if (file_sz >= 0)
+        f->file_sz = file_sz;
 
     off_t block_sz = io61_blocksize(f);
-    if(block_sz > 0) {
+    if (block_sz > 0) {
         f->block_sz = block_sz;
         f->buffer_sz = block_sz;
     } else {
         f->buffer_sz = BLOCKSIZE;
     }
+    
+    if (mode == O_WRONLY) {
+        f->write_cache_slot.data = (unsigned char *) malloc(f->buffer_sz * sizeof (char));
+        f->write_cache_slot.offset = 0;
+        f->pos = 0;
+        f->write_cache_slot.data_ptr = f->write_cache_slot.data;
+    } else {
+        f->read_cache_slot.data = (unsigned char *) malloc(f->buffer_sz * sizeof (char));
+        f->read_cache_slot.offset = 0;
+    }
 
-    f->cache_slot.data = (unsigned char *) malloc(f->buffer_sz * sizeof (char));
+    return f;
+}
+
+io61_file* io61_mmap(int fd, int mode) {
+    if (mode == O_RDONLY) 
+    {
+        io61_file* f = io61_initb(fd,mode);
+        f->read_cache_slot.data = NULL;
+
+        if (f->file_sz <= MMAP_MAX) {
+            free(f);
+            return NULL;
+        }
+
+        f->mmap_ptr = mmap(NULL, f->file_sz, PROT_READ, MAP_PRIVATE | MAP_POPULATE, f->fd, 0);
+        f->mmap_offset = 0;
+
+        return f;
+    }
+    else
+        return NULL;
 }
 
 // io61_close(f)
@@ -83,21 +129,50 @@ size_t io61_blocksize(io61_file* f) {
 //    (which is -1) on error or end-of-file.
 
 int io61_readc(io61_file* f) {
+
+    if(f->mmap_ptr != NULL)
+        return mmap_readc(f);
+
     size_t pos = f->pos;
-    if (pos < f->cache_slot.data_sz) 
+    if (pos < f->read_cache_slot.data_sz) 
     {
         f->pos += 1;
-        return f->cache_slot.data[pos];
+        return f->read_cache_slot.data[pos];
     } else {
-        f->cache_slot.data_sz = read(f->fd, f->cache_slot.data, f->buffer_sz);
-        if (f->cache_slot.data_sz < 1)
+        f->read_cache_slot.data_sz = read(f->fd, f->read_cache_slot.data, f->buffer_sz);
+        if (f->read_cache_slot.data_sz < 1)
             return EOF;
         else {
-            f->cache_slot.offset += f->cache_slot.data_sz;
+            f->read_cache_slot.offset += f->read_cache_slot.data_sz;
             f->pos = 1;
-            return f->cache_slot.data[0];            
+            return f->read_cache_slot.data[0];            
         }
     }
+}
+
+int mmap_readc(io61_file* f) {
+    if(f->mmap_offset == f->file_sz) {
+        return EOF;
+    }
+
+    f->mmap_offset++;
+    return (unsigned char)*f->mmap_ptr++;
+}
+
+ssize_t mmap_read(io61_file* f, char* buf, size_t sz) 
+{
+    size_t n = sz;
+    if ((size_t) f->file_sz < (size_t) f->mmap_offset + sz)
+    {
+        n = f->file_sz - f->mmap_offset;
+    }
+
+    memcpy(buf, f->mmap_ptr, n);
+
+    f->mmap_ptr += n;
+    f->mmap_offset += n;
+
+    return n;
 }
 
 // io61_read(f, buf, sz)
@@ -107,6 +182,11 @@ int io61_readc(io61_file* f) {
 //    -1 an error occurred before any characters were read.
 
 ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
+    
+    if(f->mmap_ptr != NULL) 
+    {
+        return mmap_read(f, buf, sz);
+    }
 
     size_t nread = 0;
 
@@ -118,13 +198,13 @@ ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
             buf[nread] = ch;
             ++nread;
         } else {
-            if (f->pos != f->cache_slot.data_sz) {
+            if (f->pos != f->read_cache_slot.data_sz) {
                 size_t n = sz - nread;
 
-                if (n > f->cache_slot.data_sz - f->pos)
-                    n = f->cache_slot.data_sz - f->pos;
+                if (n > f->read_cache_slot.data_sz - f->pos)
+                    n = f->read_cache_slot.data_sz - f->pos;
 
-                memcpy(&buf[nread], &f->cache_slot.data[f->pos], n);
+                memcpy(&buf[nread], &f->read_cache_slot.data[f->pos], n);
                 // printf("      Cache (R) %i\n", n);
 
                 f->pos += n;
@@ -133,14 +213,14 @@ ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
                 nread += n;
 
             } else {
-                f->cache_slot.offset += f->cache_slot.data_sz;
-                f->pos = f->cache_slot.data_sz = 0;
+                f->read_cache_slot.offset += f->read_cache_slot.data_sz;
+                f->pos = f->read_cache_slot.data_sz = 0;
                 
-                ssize_t n = read(f->fd, f->cache_slot.data, f->buffer_sz);
+                ssize_t n = read(f->fd, f->read_cache_slot.data, f->buffer_sz);
                 
                 if (n > 0) {
                     // printf("      System (R) %i\n", n);
-                    f->cache_slot.data_sz = n;
+                    f->read_cache_slot.data_sz = n;
                 } else
                     return nread ? nread : n;
             }
@@ -161,22 +241,22 @@ int io61_writec(io61_file* f, int ch) {
     size_t written = 0;
 
     if (pos >= f->buffer_sz) {
-        written = write(f->fd, f->cache_slot.data, f->buffer_sz);
+        written = write(f->fd, f->write_cache_slot.data, f->buffer_sz);
 
         if (written == f->buffer_sz) {
-            f->cache_slot.offset += written;
+            f->write_cache_slot.offset += written;
             pos = 0;
 
-            f->cache_slot.data[pos] = ch;
+            f->write_cache_slot.data[pos] = ch;
             f->pos = 1;
-            f->cache_slot.data_sz = 1;
+            f->write_cache_slot.data_sz = 1;
             return 0;
         } else
             return -1;
     } else {
-        f->cache_slot.data[pos] = ch;
+        f->write_cache_slot.data[pos] = ch;
         f->pos += 1;
-        f->cache_slot.data_sz += 1;
+        f->write_cache_slot.data_sz += 1;
         return 0;
     };
 }
@@ -196,14 +276,14 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
                 break;
             ++nwritten;
         } else {
-            if (f->cache_slot.data_sz >= f->buffer_sz) {
+            if (f->write_cache_slot.data_sz >= f->buffer_sz) {
                 // printf("      System (W) %i\n", f->cache_slot.data_sz);
 
                 // Correct for the offset position if the seek is out of range
-                ssize_t n = write(f->fd, f->cache_slot.data, f->cache_slot.data_sz);
+                ssize_t n = write(f->fd, f->write_cache_slot.data, f->write_cache_slot.data_sz);
                 if (n > 0) {
-                    f->cache_slot.offset += n;
-                    f->cache_slot.data_sz = 0;
+                    f->write_cache_slot.offset += n;
+                    f->write_cache_slot.data_sz = 0;
                     f->pos = 0;
                 } else
                     return nwritten ? nwritten : n;
@@ -211,14 +291,14 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
 
             size_t n = sz - nwritten;
 
-            if (n > BLOCKSIZE - f->cache_slot.data_sz)
-                n = BLOCKSIZE - f->cache_slot.data_sz;
+            if (n > BLOCKSIZE - f->write_cache_slot.data_sz)
+                n = BLOCKSIZE - f->write_cache_slot.data_sz;
 
             // printf("\n      Cache (W) %i\n", n);
-            memcpy(&f->cache_slot.data[f->pos], &buf[nwritten], n);
+            memcpy(&f->write_cache_slot.data[f->pos], &buf[nwritten], n);
             f->pos += n;
             // printf("      Cache (W) - Position %i\n", f->pos);
-            f->cache_slot.data_sz += n;
+            f->write_cache_slot.data_sz += n;
             nwritten += n;
         }
     }
@@ -236,14 +316,16 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
 
 int io61_flush(io61_file* f) {
     (void) f;
-    if (f->cache_slot.data_sz > 0) {
-        size_t written = write(f->fd, f->cache_slot.data, f->cache_slot.data_sz);
-        if (written > 0) {
-            f->cache_slot.offset += written;
-            f->cache_slot.data_sz = 0;
-            f->pos = 0;
-        } else
-            return -1;
+    if (f->mode == O_WRONLY) {
+        if (f->write_cache_slot.data_sz > 0) {
+            size_t written = write(f->fd, f->write_cache_slot.data, f->write_cache_slot.data_sz);
+            if (written > 0) {
+                f->write_cache_slot.offset += written;
+                f->write_cache_slot.data_sz = 0;
+                f->pos = 0;
+            } else
+                return -1;
+        }
     }
     return 0;
 }
@@ -256,16 +338,20 @@ int io61_flush(io61_file* f) {
 
 int io61_seek(io61_file* f, off_t pos) {
     off_t r = 0;
+
+    if (f->mmap_ptr != NULL && f->mode == O_RDONLY)
+        return io61_mmap_seek(f, pos);
+
     if (f->mode == O_RDONLY) {
-        if (pos >= (off_t) f->cache_slot.offset && 
-            pos <= (off_t) f->cache_slot.offset + (off_t) f->cache_slot.data_sz) {
-            f->pos = pos - f->cache_slot.offset;
+        if (pos >= (off_t) f->read_cache_slot.offset && 
+            pos <= (off_t) f->read_cache_slot.offset + (off_t) f->read_cache_slot.data_sz) {
+            f->pos = pos - f->read_cache_slot.offset;
             return 0;
         } else {
             r = lseek(f->fd, (off_t) pos, SEEK_SET);
             if (r == (off_t) pos) {
-                f->pos = f->cache_slot.data_sz = 0;
-                f->cache_slot.offset = pos;
+                f->pos = f->read_cache_slot.data_sz = 0;
+                f->read_cache_slot.offset = pos;
                 return 0;
             } else
                 return -1;
@@ -284,6 +370,17 @@ int io61_seek(io61_file* f, off_t pos) {
     return 0;
 }
 
+int io61_mmap_seek(io61_file* f, off_t pos) 
+{
+    if(pos < 0 || pos > f->file_sz) {
+        return -1;
+    }
+
+    f->mmap_ptr += (pos - f->mmap_offset);
+    f->mmap_offset = pos;
+
+    return 0;
+}
 
 // You shouldn't need to change these functions.
 
