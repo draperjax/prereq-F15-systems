@@ -6,3 +6,82 @@ After you have completed the exam, edit the file policy.txt, and attest that
 you have followed the rules for the exam by writing, "I have I have neither
 given nor received help on this exam and have followed the rules as stated."
 Then type your name beneath it, indicating compliance.
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 1: Data Representation (10 points)
+a
+b
+c
+d
+e
+f
+g
+h
+i
+j
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 2: Memory (10 points)
+A
+B
+C
+D
+E
+F
+G
+H
+I
+J
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 3: Pot Pourri (10 points)
+A
+B
+C
+D
+E
+F
+G
+H
+I
+J
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 4: Assembly and Data Structures (23 points)
+A
+B
+C
+D
+
+E
+F
+G
+
+H 
+I
+J
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 5: Caching I (5 points)
+
+A
+B
+C
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 6: Caching II (12 points)
+
+A
+B
+C
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 7: Memory and Pointers (12 points)
+
+A
+B
+
+C
+D
+E
+F
