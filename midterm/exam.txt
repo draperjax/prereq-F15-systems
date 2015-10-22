@@ -77,6 +77,17 @@ C
 
 =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 Problem 7: Memory and Pointers (12 points)
+In case TYPE1 and TYPE2 are missing, the structure declarations should be:
+
+struct ll1 {
+	unsigned  value;
+	TYPE1	  r_next;	/* Relative Pointer. */
+};
+
+struct ll2 {
+	unsigned  value;
+	TYPE2	  sr_next;	/* Self-Relative Pointer. */
+};
 
 A
 B
