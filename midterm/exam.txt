@@ -1,0 +1,96 @@
+You will place all the answers for your exam in this file. Please be sure to label
+each question clearly, so there is absolutely no possibility we will miss that you've
+answered a question. Please do not place your name anywhere in this file.
+
+After you have completed the exam, edit the file policy.txt, and attest that
+you have followed the rules for the exam by writing, "I have I have neither
+given nor received help on this exam and have followed the rules as stated."
+Then type your name beneath it, indicating compliance.
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 1: Data Representation (10 points)
+d < e < g < h < a < b < j < f < c < i
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 2: Memory (10 points)
+A 2
+B 4
+C 6
+D 1
+E 2
+F 5
+G 5
+H 2
+I 2
+J 2
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 3: Pot Pourri (10 points)
+A x >> 31
+B T
+C 0xE8D4A51000
+D 0xABD9
+E F
+F F*
+G kij (Row-major order)
+H false
+I Linked List of 1000 elements*
+J HW uses 2's complement encoding for signed integers, so it treats highest order bit as a negative number. Unsigned integers are based in traditional binary notation. Thus for signed integer addition, you can see integer overflow.
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 4: Assembly and Data Structures (23 points)
+A char
+B int
+C int
+D short
+
+E Move an array of structs that are of size 12 bytes into %eax.
+F Move array into %eax
+G Take lowest byte in %eax (%al), likely a char element, and place it into %eax.
+
+H Zeros out register and jumps if %eax is equal or less than %eax
+I Test to see if %eax is not equal to 1, and if so jumps.
+J Test to see if %eax is less than or equal to %edx, and if so, jumps
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 5: Caching I (5 points)
+
+A 5/14
+B E, C, D, B
+C 8/14
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 6: Caching II (12 points)
+
+A 1/8
+	N = Number of requests in the series
+	U = Size of each unit in N, for some definition of “unit”
+	R = Per request cost
+	K = Per unit cost
+	C = total cost
+
+	C = NR + NUK
+
+B 8x
+C The data sits in the cache and the data gets propagated later to the data source. Since this method writes data to the highest-level cache, and writes back to the next lower-level chace when the cache line is evicted, the cache must kep track of whether each line is dirty. Because of this, and because the write is not immediate, you run the risk of losing data if there is a system error prior to when the cache line is evicted.
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Problem 7: Memory and Pointers (12 points)
+In case TYPE1 and TYPE2 are missing, the structure declarations should be:
+
+struct ll1 {
+	unsigned  value;
+	TYPE1	  r_next;	/* Relative Pointer. */
+};
+
+struct ll2 {
+	unsigned  value;
+	TYPE2	  sr_next;	/* Self-Relative Pointer. */
+};
+
+A In the self-relative pointer situation, you will need to know the current location, whereas in the relative pointer situation you only need to know the offset from the beginning, and the beginning of the file will not change.
+B Self-relative pointers will likely take less time to seek to position because the offset is not absolute from the beginning of the file.
+C uintptr_t, because this is an unsigned integer that is large enough to hold a pointer, and the struct indicates an unsigned value.
+D unintptr_t r_next = (unintptr_t) value;
+E uintptr_t, because this is an unsigned integer that is large enough to hold a pointer, and the struct indicates an unsigned value.
+F unintptr_t sr_next += (unintptr_t) value;
