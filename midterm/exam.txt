@@ -54,14 +54,12 @@ J Test to see if %eax is less than or equal to %edx, and if so, jumps
 
 =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 Problem 5: Caching I (5 points)
-
 A 5/14
 B E, C, D, B
 C 8/14
 
 =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 Problem 6: Caching II (12 points)
-
 A 1/8
 	N = Number of requests in the series
 	U = Size of each unit in N, for some definition of “unit”
