@@ -66,11 +66,23 @@ static void command_append_arg(command* c, char* word) {
 //    PART 8: The child process should be in the process group `pgid`, or
 //       its own process group (if `pgid == 0`). To avoid race conditions,
 //       this will require TWO calls to `setpgid`.
+void error_wrapper(char* msg)
+{
+    fprintf(stderr, "%s: %s\n", msg, strerror(errno));
+    exit(1);
+}
 
 pid_t start_command(command* c, pid_t pgid) {
     (void) pgid;
-    // Your code here!
-    fprintf(stderr, "start_command not done yet\n");
+
+    // Fork a new child
+    if ((c->pid = fork()) < 0)
+        error_wrapper("Fork error\n");
+
+    if (c->pid == 0)
+        if (execvp(c->argv[0], c->argv) < 0)
+            error_wrapper("Exec error\n");
+    // fprintf(stderr, "start_command not done yet\n");
     return c->pid;
 }
 
@@ -96,7 +108,14 @@ pid_t start_command(command* c, pid_t pgid) {
 
 void run_list(command* c) {
     start_command(c, 0);
-    fprintf(stderr, "run_command not done yet\n");
+
+    int status;
+
+    if (c->pid != 0)
+        waitpid(c->pid, &status, 0);
+
+    //fprintf(stderr, "run_command not done yet\n");
+
 }
 
 

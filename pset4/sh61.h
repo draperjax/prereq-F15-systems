@@ -37,6 +37,9 @@ const char* parse_shell_token(const char* str, int* type, char** token);
 //    Mark `pgid` as the current foreground process group.
 int set_foreground(pid_t pgid);
 
+// unix-style error handling
+void error_wrapper(char* msg);
+
 // handle_signal(signo, handler)
 //    Install handler `handler` for signal `signo`. `handler` can be SIG_DFL
 //    to install the default handler, or SIG_IGN to ignore the signal. Return
