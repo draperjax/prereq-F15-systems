@@ -112,7 +112,13 @@ void run_list(command* c) {
     int status;
 
     if (c->pid != 0)
-        waitpid(c->pid, &status, 0);
+        if (waitpid(c->pid, &status, 0) > 0)
+        {
+            if (WIFEXITED(status) && WEXITSTATUS(status))
+                error_wrapper((char*) WEXITSTATUS(status));
+            else if (WIFSIGNALED(status))
+                error_wrapper((char*) WTERMSIG(status));
+        }
 
     //fprintf(stderr, "run_command not done yet\n");
 
