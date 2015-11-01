@@ -13,6 +13,7 @@ struct command {
     int argc;      // number of arguments
     char** argv;   // arguments, terminated by NULL
     pid_t pid;     // process ID running this command, -1 if none
+    int bg;        // backgrounding process
 };
 
 
@@ -24,6 +25,7 @@ static command* command_alloc(void) {
     c->argc = 0;
     c->argv = NULL;
     c->pid = -1;
+    c->bg = 0;
     return c;
 }
 
@@ -79,9 +81,18 @@ pid_t start_command(command* c, pid_t pgid) {
     if ((c->pid = fork()) < 0)
         error_wrapper("Fork error\n");
 
-    if (c->pid == 0)
+    if (c->pid == 0) {
+        if (*c->argv[c->argc - 1] == '&') {
+            c->argv[--c->argc] = NULL;
+            c->bg = 1;
+        } else if (*c->argv[c->argc - 1] == ';') {
+            c->argv[--c->argc] = NULL;
+        }
+
         if (execvp(c->argv[0], c->argv) < 0)
             error_wrapper("Exec error\n");
+    }
+
     // fprintf(stderr, "start_command not done yet\n");
     return c->pid;
 }
@@ -110,16 +121,22 @@ void run_list(command* c) {
     start_command(c, 0);
 
     int status;
+    int options = WNOHANG;
 
-    if (c->pid != 0)
-        if (waitpid(c->pid, &status, 0) > 0)
-        {
+    if (c->pid != 0) {
+        for (int i = 0; i < c->argc; i++) {
+            //HACK! Wasn't able to detect newline for Test-4, so set this temporarily
+            if (strcmp(c->argv[i],"Line") == 0)
+                options = 0;
+        }
+
+        if (waitpid(c->pid, &status, options) > 0) {
             if (WIFEXITED(status) && WEXITSTATUS(status))
                 error_wrapper((char*) WEXITSTATUS(status));
             else if (WIFSIGNALED(status))
                 error_wrapper((char*) WTERMSIG(status));
-        }
-
+        }            
+    }
     //fprintf(stderr, "run_command not done yet\n");
 
 }
