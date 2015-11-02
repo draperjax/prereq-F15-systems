@@ -14,8 +14,8 @@ struct command {
     char** argv;   // arguments, terminated by NULL
     pid_t pid;     // process ID running this command, -1 if none
     int bg;        // backgrounding process
+    command* next; // next command in list 
 };
-
 
 // command_alloc()
 //    Allocate and return a new command structure.
@@ -26,9 +26,11 @@ static command* command_alloc(void) {
     c->argv = NULL;
     c->pid = -1;
     c->bg = 0;
+    c->next = NULL;
     return c;
 }
 
+command* head = NULL;
 
 // command_free(c)
 //    Free command structure `c`, including all its words.
@@ -84,6 +86,7 @@ pid_t start_command(command* c, pid_t pgid) {
     if (c->pid == 0) {
         if (*c->argv[c->argc - 1] == '&') {
             c->argv[--c->argc] = NULL;
+            c->bg = 1;
         }
 
         if (execvp(c->argv[0], c->argv) < 0)
@@ -115,6 +118,13 @@ pid_t start_command(command* c, pid_t pgid) {
 //       - Cancel the list when you detect interruption.
 
 void run_list(command* c) {
+
+    // cd Command: Must be executed in current process
+    if (strcmp(c->argv[0], "cd") == 0) {
+        chdir(c->argv[1]);
+        return;
+    }
+
     start_command(c, 0);
 
     int status;
@@ -127,6 +137,9 @@ void run_list(command* c) {
             if (strcmp(c->argv[i], newline) == 0)
                 options = 0;
         }
+
+        if (head->next != NULL)
+            options = 0;
  
         if (waitpid(c->pid, &status, options) > 0) {
             if (WIFEXITED(status) && WEXITSTATUS(status))
@@ -151,13 +164,37 @@ void eval_line(const char* s) {
 
     // build the command
     command* c = command_alloc();
-    while ((s = parse_shell_token(s, &type, &token)) != NULL && type == TOKEN_NORMAL)
-        command_append_arg(c, token);
+    head = c;
+
+    while ((s = parse_shell_token(s, &type, &token)) != NULL) {
+        if (type == TOKEN_SEQUENCE) {
+            command* c_new = command_alloc();
+            if (c_new != NULL) {
+                c->next = c_new;
+                c = c_new;
+            }
+        }
+
+        if (type == TOKEN_NORMAL)
+            command_append_arg(c, token);
+    }
 
     // execute it
-    if (c->argc)
+    if (head->argc)
+        c = head;
         run_list(c);
-    command_free(c);
+
+        while(c->next != NULL && (*c->next).argc != (int) NULL) {
+            c = c->next;
+            run_list(c);
+        }
+         
+        while(c->next != NULL) {
+            c = c->next;
+            command_free(c);
+        }
+
+        command_free(head);
 }
 
 
