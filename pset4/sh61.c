@@ -14,6 +14,8 @@ struct command {
     char** argv;   // arguments, terminated by NULL
     pid_t pid;     // process ID running this command, -1 if none
     int bg;        // backgrounding process
+    int status;    // status
+    int cmd_chain; // command chaining
     command* next; // next command in list 
 };
 
@@ -26,6 +28,8 @@ static command* command_alloc(void) {
     c->argv = NULL;
     c->pid = -1;
     c->bg = 0;
+    c->status = 0;
+    c->cmd_chain = 0;
     c->next = NULL;
     return c;
 }
@@ -84,11 +88,6 @@ pid_t start_command(command* c, pid_t pgid) {
         error_wrapper("Fork error\n");
 
     if (c->pid == 0) {
-        if (*c->argv[c->argc - 1] == '&') {
-            c->argv[--c->argc] = NULL;
-            c->bg = 1;
-        }
-
         if (execvp(c->argv[0], c->argv) < 0)
             error_wrapper("Exec error\n");
     }
@@ -127,27 +126,29 @@ void run_list(command* c) {
 
     start_command(c, 0);
 
-    int status;
     int options = WNOHANG;
 
     if (c->pid != 0) {
         //HACK! Wasn't able to detect newline for Test-4, so set this temporarily
         const char* newline = "Line";
+
         for (int i = 0; i < c->argc; i++) {
-            if (strcmp(c->argv[i], newline) == 0)
+            const char* arg = c->argv[i];
+            if (strcmp(arg, newline) == 0)
                 options = 0;
         }
 
         if (head->next != NULL)
             options = 0;
- 
-        if (waitpid(c->pid, &status, options) > 0) {
-            if (WIFEXITED(status) && WEXITSTATUS(status))
-                error_wrapper((char*) WEXITSTATUS(status));
-            else if (WIFSIGNALED(status))
-                error_wrapper((char*) WTERMSIG(status));
-        }
 
+        if (c->bg != 1)  {
+            if (waitpid(c->pid, &c->status, options) > 0) {
+                if (WIFEXITED(c->status) && WEXITSTATUS(c->status))
+                    error_wrapper((char*) WEXITSTATUS(c->status));
+                else if (WIFSIGNALED(c->status))
+                    error_wrapper((char*) WTERMSIG(c->status));
+            }
+        }
     }
     //fprintf(stderr, "run_command not done yet\n");
 
@@ -167,9 +168,17 @@ void eval_line(const char* s) {
     head = c;
 
     while ((s = parse_shell_token(s, &type, &token)) != NULL) {
-        if (type == TOKEN_SEQUENCE) {
+        if (type == TOKEN_BACKGROUND)
+            c->bg = 1;
+
+        if (type == TOKEN_SEQUENCE || type == TOKEN_AND || type == TOKEN_OR) {
             command* c_new = command_alloc();
             if (c_new != NULL) {
+                if (type == TOKEN_AND)
+                    c->cmd_chain = 1;
+                else if (type == TOKEN_OR)
+                    c->cmd_chain = 2;
+
                 c->next = c_new;
                 c = c_new;
             }
@@ -180,13 +189,23 @@ void eval_line(const char* s) {
     }
 
     // execute it
-    if (head->argc)
+    if (head->argc) {
         c = head;
         run_list(c);
 
-        while(c->next != NULL && (*c->next).argc != (int) NULL) {
+        while(c->next != NULL && (*c->next).argc > 0) {
             c = c->next;
-            run_list(c);
+            if (c->cmd_chain == 1) {                
+                if (c->status == 0) {
+                    run_list(c);
+                }
+            } else if (c->cmd_chain == 2) {
+                if (c->status != 0) {
+                    run_list(c);
+                }
+            } else {
+                run_list(c);
+            }
         }
          
         while(c->next != NULL) {
@@ -195,6 +214,7 @@ void eval_line(const char* s) {
         }
 
         command_free(head);
+    }
 }
 
 
