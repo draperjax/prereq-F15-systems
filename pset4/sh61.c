@@ -142,12 +142,12 @@ void run_list(command* c) {
             options = 0;
 
         if (c->bg != 1)  {
-            if (waitpid(c->pid, &c->status, options) > 0) {
-                if (WIFEXITED(c->status) && WEXITSTATUS(c->status))
-                    error_wrapper((char*) WEXITSTATUS(c->status));
-                else if (WIFSIGNALED(c->status))
-                    error_wrapper((char*) WTERMSIG(c->status));
-            }
+            waitpid(c->pid, &c->status, options);
+                // if (WIFEXITED(c->status) && WEXITSTATUS(c->status))
+                //     error_wrapper((char*) WEXITSTATUS(c->status));
+                // else if (WIFSIGNALED(c->status))
+                //     error_wrapper((char*) WTERMSIG(c->status));
+            // }
         }
     }
     //fprintf(stderr, "run_command not done yet\n");
@@ -168,7 +168,7 @@ void eval_line(const char* s) {
     head = c;
 
     while ((s = parse_shell_token(s, &type, &token)) != NULL) {
-        if (type == TOKEN_SEQUENCE || type == TOKEN_AND || type == TOKEN_OR) {
+        if (type == TOKEN_AND || type == TOKEN_OR || type == TOKEN_SEQUENCE) {
             command* c_new = command_alloc();
             if (c_new != NULL) {
                 if (type == TOKEN_AND)
@@ -179,6 +179,11 @@ void eval_line(const char* s) {
                 c->next = c_new;
                 c = c_new;
             }
+        } else if (type == TOKEN_BACKGROUND) {
+            c->bg = 1;
+            command* c_new = command_alloc();
+            c->next = c_new;
+            c = c_new;            
         }
 
         if (type == TOKEN_NORMAL)
@@ -191,13 +196,14 @@ void eval_line(const char* s) {
         run_list(c);
 
         while(c->next != NULL && (*c->next).argc > 0) {
-            c = c->next;
             if (c->cmd_chain == 1 && c->status != 0)
                 break;
-            else if (c->cmd_chain == 2 && c->status == 0)
+            
+            if (c->cmd_chain == 2 && c->status == 0)
                 break;
-            else
-                run_list(c);
+            
+            c = c->next;
+            run_list(c);
         }
         
         c = head;
