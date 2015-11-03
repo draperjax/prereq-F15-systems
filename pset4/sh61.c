@@ -168,9 +168,6 @@ void eval_line(const char* s) {
     head = c;
 
     while ((s = parse_shell_token(s, &type, &token)) != NULL) {
-        if (type == TOKEN_BACKGROUND)
-            c->bg = 1;
-
         if (type == TOKEN_SEQUENCE || type == TOKEN_AND || type == TOKEN_OR) {
             command* c_new = command_alloc();
             if (c_new != NULL) {
@@ -195,19 +192,15 @@ void eval_line(const char* s) {
 
         while(c->next != NULL && (*c->next).argc > 0) {
             c = c->next;
-            if (c->cmd_chain == 1) {                
-                if (c->status == 0) {
-                    run_list(c);
-                }
-            } else if (c->cmd_chain == 2) {
-                if (c->status != 0) {
-                    run_list(c);
-                }
-            } else {
+            if (c->cmd_chain == 1 && c->status != 0)
+                break;
+            else if (c->cmd_chain == 2 && c->status == 0)
+                break;
+            else
                 run_list(c);
-            }
         }
-         
+        
+        c = head;
         while(c->next != NULL) {
             c = c->next;
             command_free(c);
