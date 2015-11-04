@@ -142,12 +142,16 @@ void run_list(command* c) {
             options = 0;
 
         if (c->bg != 1)  {
+
+            command* test = c;
+            while (test->cmd_chain != 0 && test->next != NULL) {
+                if ((*test->next).bg == 1) {
+                    options = WNOHANG;
+                }
+                test = test->next;
+            }
+
             waitpid(c->pid, &c->status, options);
-                // if (WIFEXITED(c->status) && WEXITSTATUS(c->status))
-                //     error_wrapper((char*) WEXITSTATUS(c->status));
-                // else if (WIFSIGNALED(c->status))
-                //     error_wrapper((char*) WTERMSIG(c->status));
-            // }
         }
     }
     //fprintf(stderr, "run_command not done yet\n");
@@ -196,14 +200,13 @@ void eval_line(const char* s) {
         run_list(c);
 
         while(c->next != NULL && (*c->next).argc > 0) {
-            if (c->cmd_chain == 1 && c->status != 0)
-                break;
-            
-            if (c->cmd_chain == 2 && c->status == 0)
-                break;
-            
-            c = c->next;
-            run_list(c);
+            if ((c->cmd_chain == 1 && c->status != 0) || (c->cmd_chain == 2 && c->status == 0)){
+                (*c->next).status = c->status;
+                c = c->next;
+            } else {
+                c = c->next;
+                run_list(c);                
+            }
         }
         
         c = head;
