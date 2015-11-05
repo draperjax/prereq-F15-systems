@@ -407,6 +407,11 @@ sub CMD_MAX_TIME ()       { "CMD_MAX_TIME" }
     [ 'Test 71',
       'sleep 0.2 | wc -c | sed s/0/Second/ & sleep 0.1 | wc -c | sed s/0/First/',
       'First Second',
+      CMD_CLEANUP => 'sleep 0.25'],
+
+    [ 'Test 72 (Self-written tests)',
+      'false || sleep 0.2 && echo 1 || false || echo 2 && echo 3 || false || false && echo Good',
+      '1 3 Good',
       CMD_CLEANUP => 'sleep 0.25']
 
     # Command: sleep 5
