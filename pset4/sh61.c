@@ -138,17 +138,17 @@ void run_list(command* c) {
                 options = 0;
         }
 
+        /* Disabling this block passes Test 23 */
         if (head->next != NULL)
             options = 0;
 
         if (c->bg != 1)  {
 
-            command* test = c;
-            while (test->cmd_chain != 0 && test->next != NULL) {
-                if ((*test->next).bg == 1) {
+            command* bg_check = head;
+            while (bg_check->cmd_chain != 0 && bg_check->next != NULL) {
+                if ((*bg_check->next).bg == 1)
                     options = WNOHANG;
-                }
-                test = test->next;
+                bg_check = bg_check->next;
             }
 
             waitpid(c->pid, &c->status, options);
