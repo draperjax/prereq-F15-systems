@@ -127,6 +127,7 @@ void run_list(command* c) {
     start_command(c, 0);
 
     int options = WNOHANG;
+    int bg = c->bg;
 
     if (c->pid != 0) {
         //HACK! Wasn't able to detect newline for Test-4, so set this temporarily
@@ -142,15 +143,15 @@ void run_list(command* c) {
         if (head->next != NULL)
             options = 0;
 
-        if (c->bg != 1)  {
+        /* Test 73,74 works when head switches to c */
+        command* bg_check = head;
+        while (bg_check->cmd_chain != 0 && bg_check->next != NULL) {
+            if ((*bg_check->next).bg == 1)
+                bg = 1;
+            bg_check = bg_check->next;
+        }
 
-            command* bg_check = head;
-            while (bg_check->cmd_chain != 0 && bg_check->next != NULL) {
-                if ((*bg_check->next).bg == 1)
-                    options = WNOHANG;
-                bg_check = bg_check->next;
-            }
-
+        if (bg != 1)  {
             waitpid(c->pid, &c->status, options);
         }
     }

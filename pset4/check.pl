@@ -409,9 +409,19 @@ sub CMD_MAX_TIME ()       { "CMD_MAX_TIME" }
       'First Second',
       CMD_CLEANUP => 'sleep 0.25'],
 
-    [ 'Test 72 (Self-written tests)',
+    [ 'Test 72 (Self-written test: Conditional Precedence)',
       'false || sleep 0.2 && echo 1 || false || echo 2 && echo 3 || false || false && echo Good',
       '1 3 Good',
+      CMD_CLEANUP => 'sleep 0.25'],
+
+    [ 'Test 73 (Self-written test: Conditional Precedence + Backgrounding)',
+      'sleep 0.5 && echo Second & sleep 0.6 && echo First',
+      'Second First',
+      CMD_CLEANUP => 'sleep 0.25'],
+
+    [ 'Test 74 (Self-written test: Conditional Precedence + Backgrounding II)',
+      'false || echo 1 & false || echo 2 && echo 3 || false && echo Good',
+      '2 3 Good',
       CMD_CLEANUP => 'sleep 0.25']
 
     # Command: sleep 5
