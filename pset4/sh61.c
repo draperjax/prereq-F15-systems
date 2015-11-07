@@ -1,5 +1,7 @@
 #include "sh61.h"
 #include <string.h>
+#include <stdlib.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -10,10 +12,14 @@
 
 typedef struct command command;
 struct command {
+    command* prev;
     int argc;      // number of arguments
     char** argv;   // arguments, terminated by NULL
     pid_t pid;     // process ID running this command, -1 if none
     int bg;        // backgrounding process
+    int pipe;
+    int in_fd;     // input file (pipelines)
+    int out_fd;    // output file (pipelines)
     int status;    // status
     int cmd_chain; // command chaining
     command* next; // next command in list 
@@ -22,12 +28,18 @@ struct command {
 // command_alloc()
 //    Allocate and return a new command structure.
 
+// NOTE: Employ PSET 1 learnings here -- init
 static command* command_alloc(void) {
     command* c = (command*) malloc(sizeof(command));
+
+    c->prev = NULL;
     c->argc = 0;
     c->argv = NULL;
     c->pid = -1;
     c->bg = 0;
+    c->pipe = 0;
+    c->in_fd = 0;
+    c->out_fd = 0;
     c->status = 0;
     c->cmd_chain = 0;
     c->next = NULL;
@@ -82,16 +94,38 @@ void error_wrapper(char* msg)
 
 pid_t start_command(command* c, pid_t pgid) {
     (void) pgid;
+    //pid_t cp_pid;
+    int pipeline;
+    int pipefd[2];
 
     // Fork a new child
     if ((c->pid = fork()) < 0)
         error_wrapper("Fork error\n");
 
     if (c->pid == 0) {
+        /* CHILD */
+        if (c->in_fd == 1 && c->prev && (*c->prev).out_fd == 1)
+            c->in_fd = pipefd[0];
+
+        if (c->out_fd == 1 && c->next && (*c->next).in_fd == 1) {
+            if ((pipeline = pipe(pipefd)) != 0)
+                error_wrapper("Pipe error\n");
+        }
+
+        if(c->out_fd == 1) {
+            dup2(pipefd[1],0);
+            close(pipefd[1]);
+            close(pipefd[0]);
+        }
+
+        if(c->in_fd == 1) {
+            dup2(pipefd[0],1);
+            close(pipefd[1]);
+        }
+
         if (execvp(c->argv[0], c->argv) < 0)
             error_wrapper("Exec error\n");
     }
-
     // fprintf(stderr, "start_command not done yet\n");
     return c->pid;
 }
@@ -173,22 +207,39 @@ void eval_line(const char* s) {
     head = c;
 
     while ((s = parse_shell_token(s, &type, &token)) != NULL) {
-        if (type == TOKEN_AND || type == TOKEN_OR || type == TOKEN_SEQUENCE) {
+        if (type == TOKEN_AND || type == TOKEN_OR) {
+            if (type == TOKEN_AND)
+                c->cmd_chain = 1;
+            else if (type == TOKEN_OR)
+                c->cmd_chain = 2;
+
             command* c_new = command_alloc();
             if (c_new != NULL) {
-                if (type == TOKEN_AND)
-                    c->cmd_chain = 1;
-                else if (type == TOKEN_OR)
-                    c->cmd_chain = 2;
-
+                c_new->prev = c;
                 c->next = c_new;
                 c = c_new;
             }
-        } else if (type == TOKEN_BACKGROUND) {
-            c->bg = 1;
+        } else if (type == TOKEN_PIPE) {
             command* c_new = command_alloc();
-            c->next = c_new;
-            c = c_new;            
+
+            c->out_fd = 1;
+            c_new->in_fd = 1;
+
+            if (c_new != NULL) {
+                c_new->prev = c;
+                c->next = c_new;
+                c = c_new;
+            }
+        } else if (type == TOKEN_BACKGROUND || type == TOKEN_SEQUENCE) {
+            if (type == TOKEN_BACKGROUND) 
+                c->bg = 1;
+
+            command* c_new = command_alloc();
+            if (c_new != NULL) {
+                c_new->prev = c;
+                c->next = c_new;
+                c = c_new;            
+            }
         }
 
         if (type == TOKEN_NORMAL)
