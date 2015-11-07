@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-
+#include <ctype.h>
 
 // struct command
 //    Data structure describing a command. Add your own stuff.
@@ -169,7 +169,7 @@ pid_t start_command(command* c, pid_t pgid) {
 
             if(c->redir_out == 1) {
                 if(redir_out_fd < 0) {
-                    fprintf(stderr,"%s: no such file or directory",c->redir_out_file);
+                    fprintf(stderr,"%s: No such file or directory",c->redir_out_file);
                     exit(0);
                 }
                 dup2(redir_out_fd,STDOUT_FILENO);
@@ -177,7 +177,7 @@ pid_t start_command(command* c, pid_t pgid) {
             }
             if(c->redir_out > 1) {
                 if(redir_out_fd < 0) {
-                    fprintf(stderr,"%s: no such file or directory",c->redir_out_file);
+                    fprintf(stderr,"%s: No such file or directory",c->redir_out_file);
                     exit(0);
                 }
                 dup2(redir_out_fd,c->redir_out - 10);
@@ -185,7 +185,7 @@ pid_t start_command(command* c, pid_t pgid) {
             }
             if(c->redir_in == 1) {
               if(redir_in_fd < 0) {
-                    fprintf(stderr,"%s: no such file or directory",c->redir_in_file);
+                    fprintf(stderr,"%s: No such file or directory",c->redir_in_file);
                     exit(0);
                 }
                 dup2(redir_in_fd,STDIN_FILENO);
@@ -194,7 +194,7 @@ pid_t start_command(command* c, pid_t pgid) {
 
             if(c->redir_in > 1) {
                 if(redir_in_fd < 0) {
-                    fprintf(stderr,"%s: no such file or directory",c->redir_in_file);
+                    fprintf(stderr,"%s: No such file or directory",c->redir_in_file);
                     exit(0);
                 }
                 dup2(redir_in_fd,c->redir_in - 10);
@@ -329,13 +329,9 @@ void eval_line(const char* s) {
                 c->redir_out = 1;
             else if(!strcmp(token,"<"))
                 c->redir_in = 1;
-            else if(isdigit((int)token[0])) {
-                if(token[1] == '>')
-                    c->redir_out = 10+ (token[0] - '0');
-                if(token[1] == '<')
-                    c->redir_in = 10+ (token[0] - '0');
-            }
+
             c->redir = 1;
+
         } else if (type == TOKEN_BACKGROUND || type == TOKEN_SEQUENCE) {
             if (type == TOKEN_BACKGROUND) 
                 c->bg = 1;
@@ -348,19 +344,16 @@ void eval_line(const char* s) {
             }
         }
 
-        if (type == TOKEN_NORMAL)
+        if (type == TOKEN_NORMAL) {
             if(c->redir_out) {
-                // token is file name for redir_out_file
                 c->redir_out_file = malloc(strlen(token)+1);
                 strcpy(c->redir_out_file,token);
-            }
-            else if(c->redir_in) {
-                // token is file name for redir_in_file
+            } else if (c->redir_in) {
                c->redir_in_file = malloc(strlen(token)+1);
                strcpy(c->redir_in_file,token);
-           }
-           else
+           } else
                command_append_arg(c, token);
+        }
     }
 
     // execute it
