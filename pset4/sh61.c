@@ -169,24 +169,19 @@ pid_t start_command(command* c, pid_t pgid) {
 
             if(c->redir_out == 1) {
                 if(redir_out_fd < 0) {
-                    fprintf(stderr,"%s: No such file or directory",c->redir_out_file);
-                    exit(0);
+                    error_wrapper("No such file or directory");
                 }
                 dup2(redir_out_fd,STDOUT_FILENO);
                 close(redir_out_fd);
             }
             if(c->redir_out > 1) {
                 if(redir_out_fd < 0) {
-                    fprintf(stderr,"%s: No such file or directory",c->redir_out_file);
-                    exit(0);
+                    error_wrapper("No such file or directory");
                 }
-                dup2(redir_out_fd,c->redir_out - 10);
-                close(redir_out_fd);
             }
             if(c->redir_in == 1) {
               if(redir_in_fd < 0) {
-                    fprintf(stderr,"%s: No such file or directory",c->redir_in_file);
-                    exit(0);
+                    error_wrapper("No such file or directory");
                 }
                 dup2(redir_in_fd,STDIN_FILENO);
                 close(redir_in_fd);
@@ -194,11 +189,8 @@ pid_t start_command(command* c, pid_t pgid) {
 
             if(c->redir_in > 1) {
                 if(redir_in_fd < 0) {
-                    fprintf(stderr,"%s: No such file or directory",c->redir_in_file);
-                    exit(0);
+                    error_wrapper("No such file or directory");
                 }
-                dup2(redir_in_fd,c->redir_in - 10);
-                close(redir_in_fd);
             }
 
             if (execvp(c->argv[0], c->argv) < 0)
