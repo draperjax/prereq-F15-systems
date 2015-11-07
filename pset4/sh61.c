@@ -94,7 +94,7 @@ void error_wrapper(char* msg)
 
 pid_t start_command(command* c, pid_t pgid) {
     (void) pgid;
-    //pid_t cp_pid;
+    pid_t pid;
     int pipeline;
     int pipefd[2];
 
@@ -104,30 +104,51 @@ pid_t start_command(command* c, pid_t pgid) {
 
     if (c->pid == 0) {
         /* CHILD */
-        if (c->in_fd == 1 && c->prev && (*c->prev).out_fd == 1)
+        pid = c->pid;
+
+        if (c->in_fd != 0 && c->prev && (*c->prev).out_fd != 0)
             c->in_fd = pipefd[0];
 
-        if (c->out_fd == 1 && c->next && (*c->next).in_fd == 1) {
+        if (c->out_fd != 0 && c->next && (*c->next).in_fd != 0) {
             if ((pipeline = pipe(pipefd)) != 0)
                 error_wrapper("Pipe error\n");
         }
 
-        if(c->out_fd == 1) {
-            dup2(pipefd[1],0);
-            close(pipefd[1]);
-            close(pipefd[0]);
+        if (c->pipe == 1) {
+            if ((pid = fork()) < 0)
+                error_wrapper("Fork error\n");            
         }
 
-        if(c->in_fd == 1) {
-            dup2(pipefd[0],1);
-            close(pipefd[1]);
+        if (pid != 0) {
+            if (c->out_fd)
+                close(pipefd[1]);
+
+            if (c->in_fd)
+                close(c->in_fd);
+        } else {
+            if (c->out_fd != 0) {
+                dup2(pipefd[1], STDOUT_FILENO);
+                close(pipefd[1]);
+                close(pipefd[0]);
+            }
+
+            if (c->in_fd != 0) {
+                dup2(c->in_fd, STDIN_FILENO);
+                close(pipefd[0]);
+            }
+
+            if (execvp(c->argv[0], c->argv) < 0)
+                error_wrapper("Exec error\n");
         }
 
-        if (execvp(c->argv[0], c->argv) < 0)
-            error_wrapper("Exec error\n");
+        if (c->in_fd)
+            close(c->in_fd);
     }
+
+    return pid;
+
     // fprintf(stderr, "start_command not done yet\n");
-    return c->pid;
+
 }
 
 
@@ -222,6 +243,7 @@ void eval_line(const char* s) {
         } else if (type == TOKEN_PIPE) {
             command* c_new = command_alloc();
 
+            c->pipe = 1;
             c->out_fd = 1;
             c_new->in_fd = 1;
 
@@ -257,8 +279,9 @@ void eval_line(const char* s) {
                 c = c->next;
             } else {
                 c = c->next;
-                run_list(c);                
+                run_list(c);
             }
+
         }
         
         c = head;
