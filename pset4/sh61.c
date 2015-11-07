@@ -20,6 +20,11 @@ struct command {
     int pipe;
     int in_fd;     // input file (pipelines)
     int out_fd;    // output file (pipelines)
+    int redir;
+    int redir_in;
+    int redir_out;
+    char* redir_in_file;
+    char* redir_out_file;
     int status;    // status
     int cmd_chain; // command chaining
     command* next; // next command in list 
@@ -40,6 +45,11 @@ static command* command_alloc(void) {
     c->pipe = 0;
     c->in_fd = 0;
     c->out_fd = 0;
+    c->redir = 0;
+    c->redir_in = 0;
+    c->redir_out = 0;
+    c->redir_in_file = NULL;
+    c->redir_out_file = NULL;
     c->status = 0;
     c->cmd_chain = 0;
     c->next = NULL;
@@ -97,6 +107,7 @@ pid_t start_command(command* c, pid_t pgid) {
     pid_t pid = c->pid;
     int pipeline;
     int pipefd[2];
+    int redir_out_fd, redir_in_fd;
 
     // Fork a new child
     if ((c->pid = fork()) < 0)
@@ -110,7 +121,7 @@ pid_t start_command(command* c, pid_t pgid) {
             if (pipefd[0] > 0)
                 c->in_fd = pipefd[0];
             else
-                exit(0);
+                return pid;
         }
 
         if (c->out_fd != 0 && c->next && (*c->next).in_fd != 0) {
@@ -118,42 +129,84 @@ pid_t start_command(command* c, pid_t pgid) {
                 error_wrapper("Pipe error\n");
         }
 
-        if (c->pipe == 1) {
+        if(c->redir_out)
+            redir_out_fd = creat(c->redir_out_file,S_IRWXU);
+        if(c->redir_in)
+            redir_in_fd = open(c->redir_in_file,O_RDWR);
+
+
+        if (c->pipe == 1 || c->redir == 1) {
             if ((pid = fork()) < 0)
                 error_wrapper("Fork error\n");            
+
+            if (pid != 0) {
+                if (c->out_fd)
+                    close(pipefd[1]);
+
+                if (c->in_fd)
+                    close(c->in_fd);
+
+                if(c->redir_out)
+                    close(redir_out_fd);
+
+                if(c->redir_in)
+                    close(redir_in_fd);
+            }
         }
-
-        if (pid != 0) {
-            if (c->out_fd)
-                close(pipefd[1]);
-
-            if (c->in_fd)
-                close(c->in_fd);
-
-        } else {
+    
+        if (pid == 0) {
             /* This makes the pipes work! */
             if (c->out_fd == 1) {
                 close(pipefd[0]);
-                dup2(pipefd[1], STDOUT_FILENO);
+                dup2(pipefd[1], 1);
                 close(pipefd[1]);
             }
 
-            if (c->in_fd != 1 && c->in_fd != 0) {
-                dup2(c->in_fd, STDIN_FILENO);
+            if (c->in_fd >= 1) {
+                dup2(c->in_fd, 0);
                 close(c->in_fd);
             }
 
-            if (c->in_fd != 1) {
-                if (execvp(c->argv[0], c->argv) < 0)
-                    error_wrapper("Exec error\n");
-                exit(0);
+            if(c->redir_out == 1) {
+                if(redir_out_fd < 0) {
+                    fprintf(stderr,"%s: no such file or directory",c->redir_out_file);
+                    exit(0);
+                }
+                dup2(redir_out_fd,STDOUT_FILENO);
+                close(redir_out_fd);
             }
+            if(c->redir_out > 1) {
+                if(redir_out_fd < 0) {
+                    fprintf(stderr,"%s: no such file or directory",c->redir_out_file);
+                    exit(0);
+                }
+                dup2(redir_out_fd,c->redir_out - 10);
+                close(redir_out_fd);
+            }
+            if(c->redir_in == 1) {
+              if(redir_in_fd < 0) {
+                    fprintf(stderr,"%s: no such file or directory",c->redir_in_file);
+                    exit(0);
+                }
+                dup2(redir_in_fd,STDIN_FILENO);
+                close(redir_in_fd);
+            }
+
+            if(c->redir_in > 1) {
+                if(redir_in_fd < 0) {
+                    fprintf(stderr,"%s: no such file or directory",c->redir_in_file);
+                    exit(0);
+                }
+                dup2(redir_in_fd,c->redir_in - 10);
+                close(redir_in_fd);
+            }
+
+            if (execvp(c->argv[0], c->argv) < 0)
+                error_wrapper("Exec error\n");
         }
 
-        if (c->in_fd)
+        if (c->in_fd != 1 && c->in_fd != 0)
             close(c->in_fd);
-
-        waitpid(pid, &c->status, 0);
     }
 
     return pid;
@@ -219,6 +272,14 @@ void run_list(command* c) {
 
         if (bg != 1)  {
             waitpid(c->pid, &c->status, options);
+
+            // if (waiting > 0 && c->status) {
+            //     if (WIFEXITED(c->status) && WEXITSTATUS(c->status))
+            //         error_wrapper((char*) WEXITSTATUS(c->status));
+                // else if (WIFSIGNALED(c->status))
+                //     error_wrapper((char*) WTERMSIG(c->status));
+            //}
+            // waitpid(c->pid, &c->status, options);
         }
     }
     //fprintf(stderr, "run_command not done yet\n");
@@ -263,6 +324,18 @@ void eval_line(const char* s) {
                 c->next = c_new;
                 c = c_new;
             }
+        } else if (type == TOKEN_REDIRECTION) {
+            if(!strcmp(token,">"))
+                c->redir_out = 1;
+            else if(!strcmp(token,"<"))
+                c->redir_in = 1;
+            else if(isdigit((int)token[0])) {
+                if(token[1] == '>')
+                    c->redir_out = 10+ (token[0] - '0');
+                if(token[1] == '<')
+                    c->redir_in = 10+ (token[0] - '0');
+            }
+            c->redir = 1;
         } else if (type == TOKEN_BACKGROUND || type == TOKEN_SEQUENCE) {
             if (type == TOKEN_BACKGROUND) 
                 c->bg = 1;
@@ -276,7 +349,18 @@ void eval_line(const char* s) {
         }
 
         if (type == TOKEN_NORMAL)
-            command_append_arg(c, token);
+            if(c->redir_out) {
+                // token is file name for redir_out_file
+                c->redir_out_file = malloc(strlen(token)+1);
+                strcpy(c->redir_out_file,token);
+            }
+            else if(c->redir_in) {
+                // token is file name for redir_in_file
+               c->redir_in_file = malloc(strlen(token)+1);
+               strcpy(c->redir_in_file,token);
+           }
+           else
+               command_append_arg(c, token);
     }
 
     // execute it
