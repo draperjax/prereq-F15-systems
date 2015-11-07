@@ -94,7 +94,7 @@ void error_wrapper(char* msg)
 
 pid_t start_command(command* c, pid_t pgid) {
     (void) pgid;
-    pid_t pid;
+    pid_t pid = c->pid;
     int pipeline;
     int pipefd[2];
 
@@ -106,8 +106,12 @@ pid_t start_command(command* c, pid_t pgid) {
         /* CHILD */
         pid = c->pid;
 
-        if (c->in_fd != 0 && c->prev && (*c->prev).out_fd != 0)
-            c->in_fd = pipefd[0];
+        if (c->in_fd != 0 && c->prev && (*c->prev).out_fd != 0) {
+            if (pipefd[0] > 0)
+                c->in_fd = pipefd[0];
+            else
+                exit(0);
+        }
 
         if (c->out_fd != 0 && c->next && (*c->next).in_fd != 0) {
             if ((pipeline = pipe(pipefd)) != 0)
@@ -125,24 +129,31 @@ pid_t start_command(command* c, pid_t pgid) {
 
             if (c->in_fd)
                 close(c->in_fd);
+
         } else {
-            if (c->out_fd != 0) {
+            /* This makes the pipes work! */
+            if (c->out_fd == 1) {
+                close(pipefd[0]);
                 dup2(pipefd[1], STDOUT_FILENO);
                 close(pipefd[1]);
-                close(pipefd[0]);
             }
 
-            if (c->in_fd != 0) {
+            if (c->in_fd != 1 && c->in_fd != 0) {
                 dup2(c->in_fd, STDIN_FILENO);
-                close(pipefd[0]);
+                close(c->in_fd);
             }
 
-            if (execvp(c->argv[0], c->argv) < 0)
-                error_wrapper("Exec error\n");
+            if (c->in_fd != 1) {
+                if (execvp(c->argv[0], c->argv) < 0)
+                    error_wrapper("Exec error\n");
+                exit(0);
+            }
         }
 
         if (c->in_fd)
             close(c->in_fd);
+
+        waitpid(pid, &c->status, 0);
     }
 
     return pid;
