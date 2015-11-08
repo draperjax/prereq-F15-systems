@@ -104,112 +104,86 @@ void error_wrapper(char* msg)
 
 pid_t start_command(command* c, pid_t pgid) {
     (void) pgid;
-    pid_t pid = c->pid;
-    int pipeline;
     int pipefd[2];
-    int redir_out_fd, redir_in_fd;
+    int redir_out_fd = -1; 
+    int redir_in_fd = -1;
 
-    // Fork a new child
+    // cd Command: Must be executed in current process
+    if (strcmp(c->argv[0], "cd") == 0) {
+        c->status = chdir(c->argv[1]);
+        return c->pid;
+    }
+
+    if (c->in_fd != 0 && c->prev && (*c->prev).out_fd != 0) {
+        if (pipefd[0] > 0)
+            c->in_fd = pipefd[0];
+        else
+            exit(0);
+    }
+
+    if(c->redir_out)
+        redir_out_fd = creat(c->redir_out_file, S_IRWXU);
+
+    if(c->redir_in)
+        redir_in_fd = open(c->redir_in_file, O_RDWR);
+
+    if (c->pipe == 1 || c->redir == 1) {
+        if (pipe(pipefd) != 0)
+            error_wrapper("Pipe error\n");
+    }
+
     if ((c->pid = fork()) < 0)
         error_wrapper("Fork error\n");
 
-    if (c->pid == 0) {
-        /* CHILD */
-        pid = c->pid;
+    if (c->pid != 0) {
+        if (c->out_fd == 1)
+            close(pipefd[1]);
 
-        if (c->in_fd != 0 && c->prev && (*c->prev).out_fd != 0) {
-            if (pipefd[0] > 0)
-                c->in_fd = pipefd[0];
-            else
-                exit(0);
+        if (c->in_fd > 1) {
+            close(c->in_fd);
         }
 
-        if (c->out_fd != 0 && c->next && (*c->next).in_fd != 0) {
-            if ((pipeline = pipe(pipefd)) != 0)
-                error_wrapper("Pipe error\n");
-        }
+        if(c->redir_out == 1)
+            close(redir_out_fd);
 
-        if(c->redir_out)
-            redir_out_fd = creat(c->redir_out_file, S_IRWXU);
-
-        if(c->redir_in)
-            redir_in_fd = open(c->redir_in_file, O_RDWR);
-
-
-        if (c->pipe == 1 || c->redir == 1) {
-            if ((pid = fork()) < 0)
-                error_wrapper("Fork error\n");
-        }
-
-        if (pid != 0) {
-            if (c->out_fd)
-                close(pipefd[1]);
-
-            if (c->in_fd)
-                close(c->in_fd);
-
-            if(c->redir_out)
-                close(redir_out_fd);
-
-            if(c->redir_in)
-                close(redir_in_fd);
-
-            if (c->in_fd != 1 && c->in_fd != 0)
-                close(c->in_fd);
-        }
-    
-        if (pid == 0) {
-            /* This makes the pipes work! */
-            if (c->out_fd == 1) {
-                close(pipefd[0]);
-                dup2(pipefd[1], 1);
-                close(pipefd[1]);
-            }
-
-            if (c->in_fd >= 1) {
-                dup2(c->in_fd, 0);
-                close(c->in_fd);
-            }
-
-            if(c->redir_out == 1) {
-                if(redir_out_fd < 0) {
-                    error_wrapper("No such file or directory");
-                }
-                dup2(redir_out_fd,STDOUT_FILENO);
-                close(redir_out_fd);
-            }
-
-            if(c->redir_out > 1) {
-                if(redir_out_fd < 0) {
-                    error_wrapper("No such file or directory");
-                }
-            }
-
-            if(c->redir_in == 1) {
-              if(redir_in_fd < 0) {
-                    error_wrapper("No such file or directory");
-                }
-                dup2(redir_in_fd,STDIN_FILENO);
-                close(redir_in_fd);
-            }
-
-            if(c->redir_in > 1) {
-                if(redir_in_fd < 0) {
-                    error_wrapper("No such file or directory");
-                }
-            }
-
-            if (execvp(c->argv[0], c->argv) < 0)
-                error_wrapper("Exec error\n");
-        }
+        if(c->redir_in == 1)
+            close(redir_in_fd);
     }
 
-    return pid;
+    if (c->pid == 0) {
+        /* This makes the pipes work! */
+        if (c->out_fd == 1) {
+            close(pipefd[0]);
+            dup2(pipefd[1], 1);
+            close(pipefd[1]);
+        }
 
-    // fprintf(stderr, "start_command not done yet\n");
+        if (c->in_fd >= 1) {
+            dup2(c->in_fd, 0);
+            close(c->in_fd);
+        }
 
+        if(c->redir_out >= 1) {
+            if(redir_out_fd < 0) {
+                error_wrapper("No such file or directory");
+            }
+            dup2(redir_out_fd,STDOUT_FILENO);
+            close(redir_out_fd);
+        }
+
+        if(c->redir_in >= 1) {
+          if(redir_in_fd < 0) {
+                error_wrapper("No such file or directory");
+            }
+            dup2(redir_in_fd,STDIN_FILENO);
+            close(redir_in_fd);
+        }
+
+        if (execvp(c->argv[0], c->argv) < 0)
+            error_wrapper("Exec error\n");
+    }
+    return c->pid;
 }
-
 
 // run_list(c)
 //    Run the command list starting at `c`.
@@ -231,54 +205,44 @@ pid_t start_command(command* c, pid_t pgid) {
 //       - Cancel the list when you detect interruption.
 
 void run_list(command* c) {
-
-    // cd Command: Must be executed in current process
-    if (strcmp(c->argv[0], "cd") == 0) {
-        chdir(c->argv[1]);
-        return;
-    }
-
-    start_command(c, 0);
-
     int options = WNOHANG;
     int bg = c->bg;
 
-    if (c->pid != 0) {
-        //HACK! Wasn't able to detect newline for Test-4, so set this temporarily
-        const char* newline = "Line";
+    start_command(c, 0);
 
-        for (int i = 0; i < c->argc; i++) {
-            const char* arg = c->argv[i];
-            if (strcmp(arg, newline) == 0)
+    while(c->next != NULL && (*c->next).argc > 0) {
+        if (c->pid != 0) {
+
+            /* Disabling this block passes Test 23 */
+            if (head->next != NULL)
                 options = 0;
+
+            /* Test 73,74 works when head switches to c */
+            command* bg_check = head;
+            while (bg_check->cmd_chain != 0 && bg_check->next != NULL) {
+                if ((*bg_check->next).bg == 1)
+                    bg = 1;
+                bg_check = bg_check->next;
+            }
+
+            if (c->cmd_chain == 3)
+                waitpid(c->pid, &c->status, 0);                
+            if (bg != 1)
+                waitpid(c->pid, &c->status, options);
         }
 
-        /* Disabling this block passes Test 23 */
-        if (head->next != NULL)
-            options = 0;
+        if ((c->cmd_chain == 1 && c->status != 0) || (c->cmd_chain == 2 && c->status == 0)) {
+            (*c->next).status = c->status;
+            if ((*c->next).next != NULL)
+                c = (*c->next).next;
+            else
+                break;
+        } else
+            c = c->next;
 
-        /* Test 73,74 works when head switches to c */
-        command* bg_check = head;
-        while (bg_check->cmd_chain != 0 && bg_check->next != NULL) {
-            if ((*bg_check->next).bg == 1)
-                bg = 1;
-            bg_check = bg_check->next;
-        }
-
-        if (bg != 1)  {
-            waitpid(c->pid, &c->status, options);
-
-            // if (waiting > 0 && c->status) {
-            //     if (WIFEXITED(c->status) && WEXITSTATUS(c->status))
-            //         error_wrapper((char*) WEXITSTATUS(c->status));
-                // else if (WIFSIGNALED(c->status))
-                //     error_wrapper((char*) WTERMSIG(c->status));
-            //}
-            // waitpid(c->pid, &c->status, options);
-        }
+        start_command(c, 0);
     }
     //fprintf(stderr, "run_command not done yet\n");
-
 }
 
 
@@ -327,8 +291,10 @@ void eval_line(const char* s) {
             c->redir = 1;
 
         } else if (type == TOKEN_BACKGROUND || type == TOKEN_SEQUENCE) {
-            if (type == TOKEN_BACKGROUND) 
+            if (type == TOKEN_BACKGROUND)
                 c->bg = 1;
+            if (type == TOKEN_SEQUENCE)
+                c->cmd_chain = 3;
 
             command* c_new = command_alloc();
             if (c_new != NULL) {
@@ -336,18 +302,14 @@ void eval_line(const char* s) {
                 c->next = c_new;
                 c = c_new;            
             }
-        }
-
-        if (type == TOKEN_NORMAL) {
+        } else if (type == TOKEN_NORMAL) {
             if(c->redir_out == 1) {
                 c->redir_out_file = malloc(strlen(token) + 1);
                 strcpy(c->redir_out_file, token);
-
             } else if (c->redir_in == 1) {
                c->redir_in_file = malloc(strlen(token) + 1);
                strcpy(c->redir_in_file, token);
-
-           } else
+            } else
                command_append_arg(c, token);
         }
     }
@@ -357,16 +319,6 @@ void eval_line(const char* s) {
         c = head;
         run_list(c);
 
-        while(c->next != NULL && (*c->next).argc > 0) {
-            if ((c->cmd_chain == 1 && c->status != 0) || (c->cmd_chain == 2 && c->status == 0)){
-                (*c->next).status = c->status;
-                c = c->next;
-            } else {
-                c = c->next;
-                run_list(c);
-            }
-        }
-        
         c = head;
         while(c->next != NULL) {
             c = c->next;
