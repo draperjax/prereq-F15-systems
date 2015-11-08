@@ -121,7 +121,7 @@ pid_t start_command(command* c, pid_t pgid) {
             if (pipefd[0] > 0)
                 c->in_fd = pipefd[0];
             else
-                return pid;
+                exit(0);
         }
 
         if (c->out_fd != 0 && c->next && (*c->next).in_fd != 0) {
@@ -130,28 +130,32 @@ pid_t start_command(command* c, pid_t pgid) {
         }
 
         if(c->redir_out)
-            redir_out_fd = creat(c->redir_out_file,S_IRWXU);
+            redir_out_fd = creat(c->redir_out_file, S_IRWXU);
+
         if(c->redir_in)
-            redir_in_fd = open(c->redir_in_file,O_RDWR);
+            redir_in_fd = open(c->redir_in_file, O_RDWR);
 
 
         if (c->pipe == 1 || c->redir == 1) {
             if ((pid = fork()) < 0)
-                error_wrapper("Fork error\n");            
+                error_wrapper("Fork error\n");
+        }
 
-            if (pid != 0) {
-                if (c->out_fd)
-                    close(pipefd[1]);
+        if (pid != 0) {
+            if (c->out_fd)
+                close(pipefd[1]);
 
-                if (c->in_fd)
-                    close(c->in_fd);
+            if (c->in_fd)
+                close(c->in_fd);
 
-                if(c->redir_out)
-                    close(redir_out_fd);
+            if(c->redir_out)
+                close(redir_out_fd);
 
-                if(c->redir_in)
-                    close(redir_in_fd);
-            }
+            if(c->redir_in)
+                close(redir_in_fd);
+
+            if (c->in_fd != 1 && c->in_fd != 0)
+                close(c->in_fd);
         }
     
         if (pid == 0) {
@@ -174,11 +178,13 @@ pid_t start_command(command* c, pid_t pgid) {
                 dup2(redir_out_fd,STDOUT_FILENO);
                 close(redir_out_fd);
             }
+
             if(c->redir_out > 1) {
                 if(redir_out_fd < 0) {
                     error_wrapper("No such file or directory");
                 }
             }
+
             if(c->redir_in == 1) {
               if(redir_in_fd < 0) {
                     error_wrapper("No such file or directory");
@@ -196,9 +202,6 @@ pid_t start_command(command* c, pid_t pgid) {
             if (execvp(c->argv[0], c->argv) < 0)
                 error_wrapper("Exec error\n");
         }
-
-        if (c->in_fd != 1 && c->in_fd != 0)
-            close(c->in_fd);
     }
 
     return pid;
@@ -306,7 +309,7 @@ void eval_line(const char* s) {
             }
         } else if (type == TOKEN_PIPE) {
             command* c_new = command_alloc();
-
+            
             c->pipe = 1;
             c->out_fd = 1;
             c_new->in_fd = 1;
@@ -320,8 +323,7 @@ void eval_line(const char* s) {
             if(!strcmp(token,">"))
                 c->redir_out = 1;
             else if(!strcmp(token,"<"))
-                c->redir_in = 1;
-
+                c->redir_in = 1;            
             c->redir = 1;
 
         } else if (type == TOKEN_BACKGROUND || type == TOKEN_SEQUENCE) {
@@ -337,12 +339,14 @@ void eval_line(const char* s) {
         }
 
         if (type == TOKEN_NORMAL) {
-            if(c->redir_out) {
-                c->redir_out_file = malloc(strlen(token)+1);
-                strcpy(c->redir_out_file,token);
-            } else if (c->redir_in) {
-               c->redir_in_file = malloc(strlen(token)+1);
-               strcpy(c->redir_in_file,token);
+            if(c->redir_out == 1) {
+                c->redir_out_file = malloc(strlen(token) + 1);
+                strcpy(c->redir_out_file, token);
+
+            } else if (c->redir_in == 1) {
+               c->redir_in_file = malloc(strlen(token) + 1);
+               strcpy(c->redir_in_file, token);
+
            } else
                command_append_arg(c, token);
         }
@@ -361,7 +365,6 @@ void eval_line(const char* s) {
                 c = c->next;
                 run_list(c);
             }
-
         }
         
         c = head;
