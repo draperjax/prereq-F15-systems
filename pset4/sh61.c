@@ -20,7 +20,6 @@ struct command {
     int pipe;
     int in_fd;     // input file (pipelines)
     int out_fd;    // output file (pipelines)
-    int redir;
     int redir_in;
     int redir_out;
     char* redir_in_file;
@@ -45,7 +44,6 @@ static command* command_alloc(void) {
     c->pipe = 0;
     c->in_fd = 0;
     c->out_fd = 0;
-    c->redir = 0;
     c->redir_in = 0;
     c->redir_out = 0;
     c->redir_in_file = NULL;
@@ -266,12 +264,10 @@ void eval_line(const char* s) {
                 c = c_new;
             }
         } else if (type == TOKEN_REDIRECTION) {
-            if(!strcmp(token,">"))
+            if (strcmp(token,">") == 0)
                 c->redir_out = 1;
-            else if(!strcmp(token,"<"))
-                c->redir_in = 1;            
-            c->redir = 1;
-
+            else if (strcmp(token,"<") == 0)
+                c->redir_in = 1;
         } else if (type == TOKEN_BACKGROUND || type == TOKEN_SEQUENCE) {
             if (type == TOKEN_BACKGROUND)
                 c->bg = 1;
