@@ -139,9 +139,8 @@ pid_t start_command(command* c, pid_t pgid) {
         if (c->out_fd == 1)
             close(pipefd[1]);
 
-        if (c->in_fd > 1) {
+        if (c->in_fd > 1)
             close(c->in_fd);
-        }
 
         if(c->redir_out == 1)
             close(redir_out_fd);
@@ -154,12 +153,12 @@ pid_t start_command(command* c, pid_t pgid) {
         /* This makes the pipes work! */
         if (c->out_fd == 1) {
             close(pipefd[0]);
-            dup2(pipefd[1], 1);
+            dup2(pipefd[1], STDOUT_FILENO);
             close(pipefd[1]);
         }
 
         if (c->in_fd >= 1) {
-            dup2(c->in_fd, 0);
+            dup2(c->in_fd, STDIN_FILENO);
             close(c->in_fd);
         }
 
@@ -219,9 +218,12 @@ void run_list(command* c) {
 
             /* Test 73,74 works when head switches to c */
             command* bg_check = head;
-            while (bg_check->cmd_chain != 0 && bg_check->next != NULL) {
-                if ((*bg_check->next).bg == 1)
+            while (bg_check->next != NULL) {
+                if ((*bg_check->next).bg == 1) {
                     bg = 1;
+                    break;
+                }
+
                 bg_check = bg_check->next;
             }
 
