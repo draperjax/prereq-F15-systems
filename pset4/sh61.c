@@ -84,18 +84,6 @@ static void command_append_arg(command* c, char* word) {
 // COMMAND EVALUATION
 
 // start_command(c, pgid)
-//    Start the single command indicated by `c`. Sets `c->pid` to the child
-//    process running the command, and returns `c->pid`.
-//
-//    PART 1: Fork a child process and run the command using `execvp`.
-//    PART 5: Set up a pipeline if appropriate. This may require creating a
-//       new pipe (`pipe` system call), and/or replacing the child process's
-//       standard input/output with parts of the pipe (`dup2` and `close`).
-//       Draw pictures!
-//    PART 7: Handle redirections.
-//    PART 8: The child process should be in the process group `pgid`, or
-//       its own process group (if `pgid == 0`). To avoid race conditions,
-//       this will require TWO calls to `setpgid`.
 void error_wrapper(char* msg)
 {
     fprintf(stderr, "%s: %s\n", msg, strerror(errno));
@@ -114,22 +102,16 @@ pid_t start_command(command* c, pid_t pgid) {
         return c->pid;
     }
 
-    if (c->in_fd != 0 && c->prev && (*c->prev).out_fd != 0) {
-        if (pipefd[0] > 0)
-            c->in_fd = pipefd[0];
-        else
-            exit(0);
-    }
-
-    if(c->redir_out)
+    if(c->redir_out == 1)
         redir_out_fd = creat(c->redir_out_file, S_IRWXU);
 
-    if(c->redir_in)
+    if(c->redir_in == 1)
         redir_in_fd = open(c->redir_in_file, O_RDWR);
 
-    if (c->pipe == 1 || c->redir == 1) {
+    if (c->pipe == 1) {
         if (pipe(pipefd) != 0)
             error_wrapper("Pipe error\n");
+        (*c->next).in_fd = pipefd[0];
     }
 
     if ((c->pid = fork()) < 0)
@@ -151,7 +133,7 @@ pid_t start_command(command* c, pid_t pgid) {
 
     if (c->pid == 0) {
         /* This makes the pipes work! */
-        if (c->out_fd == 1) {
+        if (c->out_fd > 0) {
             close(pipefd[0]);
             dup2(pipefd[1], STDOUT_FILENO);
             close(pipefd[1]);
@@ -163,17 +145,15 @@ pid_t start_command(command* c, pid_t pgid) {
         }
 
         if(c->redir_out >= 1) {
-            if(redir_out_fd < 0) {
+            if(redir_out_fd < 0)
                 error_wrapper("No such file or directory");
-            }
             dup2(redir_out_fd,STDOUT_FILENO);
             close(redir_out_fd);
         }
 
         if(c->redir_in >= 1) {
-          if(redir_in_fd < 0) {
+          if(redir_in_fd < 0)
                 error_wrapper("No such file or directory");
-            }
             dup2(redir_in_fd,STDIN_FILENO);
             close(redir_in_fd);
         }
