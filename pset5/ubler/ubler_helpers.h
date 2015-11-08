@@ -10,8 +10,6 @@
 #include <stdbool.h>
 #include <pthread.h>
 
-#define SOL 3
-
 /**
  * Tracking code and structures
  */
