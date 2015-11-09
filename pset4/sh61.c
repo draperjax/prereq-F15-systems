@@ -120,16 +120,16 @@ pid_t start_command(command* c, pid_t pgid) {
         error_wrapper("Fork error\n");
 
     if (c->pid != 0) {
-        if (c->out_fd == 1)
+        if (c->out_fd >= 1) 
             close(pipefd[1]);
 
         if (c->in_fd >= 1)
             close(c->in_fd);
 
-        if(c->redir_out >= 1)
+        if (c->redir_out >= 1)
             close(redir_out_fd);
 
-        if(c->redir_in >= 1)
+        if (c->redir_in >= 1)
             close(redir_in_fd);
     }
 
@@ -137,13 +137,13 @@ pid_t start_command(command* c, pid_t pgid) {
         setpgid(c->pid, pgid);
 
         /* This makes the pipes work! */
-        if (c->out_fd > 0) {
+        if (c->out_fd != 0) {
             close(pipefd[0]);
             dup2(pipefd[1], STDOUT_FILENO);
             close(pipefd[1]);
         }
 
-        if (c->in_fd >= 1) {
+        if (c->in_fd != 0) {
             dup2(c->in_fd, STDIN_FILENO);
             close(c->in_fd);
         }
