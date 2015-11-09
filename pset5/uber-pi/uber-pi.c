@@ -61,7 +61,7 @@ void drive(int thread_id, int uber_id) {
 
 // Question to be answered in your README: Why is this function so slow?
 void* passenger(void* params) {
-	int me = *((int *)params);
+	int me = (int)params;
 	for (int k = 0; k < RIDES_PER_PASSENGER; ++k) {
 		for (int i = 0; i < NUM_UBERS; ++i) {
 			pthread_mutex_lock(&uber_locks[i]);
@@ -78,7 +78,7 @@ void* passenger_better_init(void* params) {
 	int me;
 	
 	(void)me;	// Avoid unused variable warnings
-	me = *((int *)params);
+	me = (int)params;
 	return NULL;
 }
 
@@ -86,7 +86,7 @@ void* passenger_trylock(void* params) {
 	int me;
 	
 	(void)me;
-	me = *((int *)params);
+	me = (int)params;
 	return NULL;
 }
 
@@ -111,19 +111,19 @@ int main (int argc, char** argv) {
 
 	for (long long i = 0; i < NUM_PASSENGERS; ++i) {
 		if (strcmp(argv[1], "2") == 0) {
-			if (pthread_create(&threads[i], NULL, passenger_trylock, &i)) {
+			if (pthread_create(&threads[i], NULL, passenger_trylock, (void *)i)) {
 				printf("pthread_create failed\n");
 				exit(1);
 			}
 		}
 		else if (strcmp(argv[1], "1") == 0) {
-			if (pthread_create(&threads[i], NULL, passenger_better_init, &i)) {
+			if (pthread_create(&threads[i], NULL, passenger_better_init, (void *)i)) {
 				printf("pthread_create failed\n");
 				exit(1);
 			}
 		}
 		else if (strcmp(argv[1], "0") == 0) {
-			if (pthread_create(&threads[i], NULL, passenger, &i)) {
+			if (pthread_create(&threads[i], NULL, passenger, (void *)i)) {
 				printf("pthread_create failed\n");
 				exit(1);
 			}
