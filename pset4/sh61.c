@@ -104,10 +104,10 @@ pid_t start_command(command* c, pid_t pgid) {
         return c->pid;
     }
 
-    if(c->redir_out == 1)
+    if(c->redir_out >= 1)
         redir_out_fd = creat(c->redir_out_file, S_IRWXU);
 
-    if(c->redir_in == 1)
+    if(c->redir_in >= 1)
         redir_in_fd = open(c->redir_in_file, O_RDWR);
 
     if (c->pipe == 1) {
@@ -123,13 +123,13 @@ pid_t start_command(command* c, pid_t pgid) {
         if (c->out_fd == 1)
             close(pipefd[1]);
 
-        if (c->in_fd > 1)
+        if (c->in_fd >= 1)
             close(c->in_fd);
 
-        if(c->redir_out == 1)
+        if(c->redir_out >= 1)
             close(redir_out_fd);
 
-        if(c->redir_in == 1)
+        if(c->redir_in >= 1)
             close(redir_in_fd);
     }
 
@@ -151,14 +151,23 @@ pid_t start_command(command* c, pid_t pgid) {
         if(c->redir_out >= 1) {
             if(redir_out_fd < 0)
                 error_wrapper("No such file or directory");
-            dup2(redir_out_fd,STDOUT_FILENO);
+            else if (c->redir_out == 2) {
+                dup2(redir_out_fd, STDERR_FILENO);
+                close(redir_out_fd);
+            }
+
+            dup2(redir_out_fd, STDOUT_FILENO);
             close(redir_out_fd);
         }
 
         if(c->redir_in >= 1) {
-          if(redir_in_fd < 0)
+            if(redir_in_fd < 0)
                 error_wrapper("No such file or directory");
-            dup2(redir_in_fd,STDIN_FILENO);
+            else if (c->redir_in == 2) {
+                dup2(redir_in_fd, STDERR_FILENO);
+                close(redir_in_fd);
+            }
+            dup2(redir_in_fd, STDIN_FILENO);
             close(redir_in_fd);
         }
 
@@ -281,6 +290,12 @@ void eval_line(const char* s) {
                 c->redir_out = 1;
             else if (strcmp(token,"<") == 0)
                 c->redir_in = 1;
+            else if (isdigit((int)token[0])) {
+                if (token[1] == '>')
+                    c->redir_out = 2;
+                if (token[1] == '<')
+                    c->redir_in = 2;
+            }
         } else if (type == TOKEN_BACKGROUND || type == TOKEN_SEQUENCE) {
             if (type == TOKEN_BACKGROUND)
                 c->bg = 1;
@@ -294,10 +309,10 @@ void eval_line(const char* s) {
                 c = c_new;            
             }
         } else if (type == TOKEN_NORMAL) {
-            if(c->redir_out == 1) {
+            if(c->redir_out >= 1) {
                 c->redir_out_file = malloc(strlen(token) + 1);
                 strcpy(c->redir_out_file, token);
-            } else if (c->redir_in == 1) {
+            } else if (c->redir_in >= 1) {
                c->redir_in_file = malloc(strlen(token) + 1);
                strcpy(c->redir_in_file, token);
             } else
