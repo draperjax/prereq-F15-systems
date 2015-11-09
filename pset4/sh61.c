@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <ctype.h>
+#include <signal.h>
 
 // struct command
 //    Data structure describing a command. Add your own stuff.
@@ -28,6 +29,8 @@ struct command {
     int cmd_chain; // command chaining
     command* next; // next command in list 
 };
+
+int needprompt = 0;
 
 // command_alloc()
 //    Allocate and return a new command structure.
@@ -89,10 +92,11 @@ void error_wrapper(char* msg)
 }
 
 pid_t start_command(command* c, pid_t pgid) {
-    (void) pgid;
     int pipefd[2];
     int redir_out_fd = -1; 
     int redir_in_fd = -1;
+
+    setpgid(c->pid, pgid);
 
     // cd Command: Must be executed in current process
     if (strcmp(c->argv[0], "cd") == 0) {
@@ -130,6 +134,8 @@ pid_t start_command(command* c, pid_t pgid) {
     }
 
     if (c->pid == 0) {
+        setpgid(c->pid, pgid);
+
         /* This makes the pipes work! */
         if (c->out_fd > 0) {
             close(pipefd[0]);
@@ -189,7 +195,6 @@ void run_list(command* c) {
 
     while(c->next != NULL && (*c->next).argc > 0) {
         if (c->pid != 0) {
-
             /* Disabling this block passes Test 23 */
             if (head->next != NULL)
                 options = 0;
@@ -205,20 +210,28 @@ void run_list(command* c) {
                 bg_check = bg_check->next;
             }
 
+            // if ((*c->next).next == NULL && (strcmp((*c->next).argv[0], "sleep") == 0))
+            //     needprompt = 1;
             if (c->cmd_chain == 3)
-                waitpid(c->pid, &c->status, 0);                
-            if (bg != 1)
+                waitpid(c->pid, &c->status, 0);
+            else if (bg != 1)
                 waitpid(c->pid, &c->status, options);
-        }
 
-        if ((c->cmd_chain == 1 && c->status != 0) || (c->cmd_chain == 2 && c->status == 0)) {
-            (*c->next).status = c->status;
-            if ((*c->next).next != NULL)
-                c = (*c->next).next;
-            else
+            if (WIFEXITED(c->status))
+                c->status = WEXITSTATUS(c->status);
+
+            if (c->status < -1)
                 break;
-        } else
-            c = c->next;
+
+            if ((c->cmd_chain == 1 && c->status != 0) || (c->cmd_chain == 2 && c->status == 0)) {
+                (*c->next).status = c->status;
+                if ((*c->next).next != NULL)
+                    c = (*c->next).next;
+                else
+                    break;
+            } else
+                c = c->next;
+        }
 
         start_command(c, 0);
     }
@@ -307,8 +320,18 @@ void eval_line(const char* s) {
     }
 }
 
+void handler(int signal) {
+    if (signal == SIGTTIN)
+        return;
+    else if (signal == SIGINT) {
+        needprompt = 1;
+    }
+}
 
 int main(int argc, char* argv[]) {
+    struct sigaction sa; 
+    sa.sa_handler = handler;
+
     FILE* command_file = stdin;
     int quiet = 0;
 
@@ -332,6 +355,8 @@ int main(int argc, char* argv[]) {
     //   into the foreground
     set_foreground(0);
     handle_signal(SIGTTOU, SIG_IGN);
+    handle_signal(SIGINT, SIG_DFL);
+    handle_signal(SIGALRM, SIG_DFL);
 
     char buf[BUFSIZ];
     int bufpos = 0;

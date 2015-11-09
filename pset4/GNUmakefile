@@ -1,5 +1,5 @@
 # Default optimization level
-O ?= 0
+O ?= 2
 
 all: sh61
 
