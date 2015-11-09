@@ -320,18 +320,7 @@ void eval_line(const char* s) {
     }
 }
 
-void handler(int signal) {
-    if (signal == SIGTTIN)
-        return;
-    else if (signal == SIGINT) {
-        needprompt = 1;
-    }
-}
-
 int main(int argc, char* argv[]) {
-    struct sigaction sa; 
-    sa.sa_handler = handler;
-
     FILE* command_file = stdin;
     int quiet = 0;
 
