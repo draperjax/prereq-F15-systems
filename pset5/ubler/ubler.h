@@ -15,9 +15,6 @@ struct meal
     struct restaurant *restaurant;
 
     // add other things as you go along
-    #if SOL >= 3
-    pthread_mutex_t meal_lock;
-    #endif
 };
 
 struct customer
@@ -28,9 +25,6 @@ struct customer
     struct location *location;
 
     // add other things as you go along
-    #if SOL >= 3
-    pthread_mutex_t customer_lock;
-    #endif
 };
 
 // init/cleanup meal
