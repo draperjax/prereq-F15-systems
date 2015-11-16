@@ -31,6 +31,8 @@ double uber_times[NUM_UBERS];
 volatile double inside[NUM_UBERS];
 volatile double outside[NUM_UBERS];
 
+int in_use;
+
 static inline double rand_unif() {
 	return (double)rand() / (double)RAND_MAX;
 }
@@ -75,18 +77,35 @@ void* passenger(void* params) {
 
 
 void* passenger_better_init(void* params) {
-	int me;
-	
-	(void)me;	// Avoid unused variable warnings
-	me = (int)params;
+	int me = (int)params;
+	for (int k = 0; k < RIDES_PER_PASSENGER; ++k) {
+		int uber = (rand() % NUM_UBERS);
+		pthread_mutex_lock(&uber_locks[uber]);
+		drive(me, uber);
+		pthread_mutex_unlock(&uber_locks[uber]);
+	}
 	return NULL;
 }
 
 void* passenger_trylock(void* params) {
-	int me;
-	
-	(void)me;
-	me = (int)params;
+	int me = (int)params;
+
+	for (int k = 0; k < RIDES_PER_PASSENGER; ++k) {
+		int uber = (rand() % NUM_UBERS);
+		int counter = 0;
+		while (pthread_mutex_trylock(&uber_locks[uber]) != 0) {
+			if (counter < 4) {
+				uber = (rand() % NUM_UBERS);
+				counter++;
+			} else {
+				pthread_mutex_lock(&uber_locks[uber]);
+				break;
+			}
+		}
+
+		drive(me, uber);
+		pthread_mutex_unlock(&uber_locks[uber]);
+	}
 	return NULL;
 }
 
