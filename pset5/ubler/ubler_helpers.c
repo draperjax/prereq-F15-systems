@@ -479,7 +479,11 @@ pthread_mutex_t receive_request_lock;
 
 unsigned int requests;
 
-unsigned int request_pos;
+bool looped;
+bool deliverMealsAndCustomers;
+
+unsigned int mealPos;
+unsigned int customerPos;
 
 // puts either a customer or a meal in *ret
 // if we put a customer in *ret, *isCustomer will be set to true
@@ -496,20 +500,54 @@ int receive_request(void **ret, bool *isCustomer)
     }
     pthread_mutex_lock(&receive_request_lock);
     *ret = NULL;
-    if (request_pos == requests)
+    looped = false;
+    *isCustomer = (bool) (rand() % 2);
+    if (!deliverMealsAndCustomers)
     {
-        request_pos = 0;
+        *isCustomer = true;
     }
-    for ( ; request_pos < requests; request_pos++)
+    // purposefully reproducing code, because sometimes the code segfaults when
+    //   variables are declared on the stack in this function
+    if (*isCustomer)
     {
-        if (meal_completed(&meals[request_pos]) == 0 ||
-            customer_completed(&customers[request_pos]) == 0)
+        if (customerPos == requests)
         {
-            int customer = rand() % 2;
-            *ret = ((customer == 1) ? (void *)&customers[request_pos] : (void *)&meals[request_pos]);
-            *isCustomer = (customer == 1);
-            pthread_mutex_unlock(&receive_request_lock);
-            return 0;
+            customerPos = 0;
+        }
+        for ( ; customerPos < requests; customerPos++)
+        {
+            if (!customer_completed(&customers[customerPos]))
+            {
+                *ret = (void *)&customers[customerPos];
+                pthread_mutex_unlock(&receive_request_lock);
+                return 0;
+            }
+            if (customerPos == requests - 1 && !looped)
+            {
+                looped = true;
+                customerPos = 0;
+            }
+        }
+    }
+    if (!(*isCustomer))
+    {
+        if (mealPos == requests)
+        {
+            mealPos = 0;
+        }
+        for ( ; mealPos < requests; mealPos++)
+        {
+            if (!meal_completed(&meals[mealPos]))
+            {
+                *ret = (void *)&meals[mealPos];
+                pthread_mutex_unlock(&receive_request_lock);
+                return 0;
+            }
+            if (mealPos == requests - 1 && !looped)
+            {
+                looped = true;
+                mealPos = 0;
+            }
         }
     }
     pthread_mutex_unlock(&receive_request_lock);
@@ -535,6 +573,7 @@ int create_and_run_requests(
 
     pthread_mutex_init(&receive_request_lock, NULL);
     requests = num_requests;
+    deliverMealsAndCustomers = ubler_params->deliverMealsAndCustomers;
 
     meals = malloc(sizeof(struct meal) * requests);
     customers = malloc(sizeof(struct customer) * requests);
