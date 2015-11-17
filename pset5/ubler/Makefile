@@ -1,5 +1,4 @@
-CC = gcc
-CFLAGS = -std=gnu99 -g -W -Wall -Wshadow 
+CFLAGS = -std=gnu99 -m32 -g -W -Wall -Wshadow
 
 O ?= 3
 
@@ -15,16 +14,16 @@ $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -c -O$(O) -o $@ $<
 
 extra: $(TARGET)
-	python3 check.py -e
+	@python3 check.py -e
 
 extra-%: $(TARGET)
-	python3 check.py $(subst extra-,,$@)
+	@python3 check.py $(subst extra-,,$@)
 
 check: $(TARGET)
-	python3 check.py
+	@python3 check.py
 
 check-%: $(TARGET)
-	python3 check.py $(subst check-,,$@)
+	@python3 check.py $(subst check-,,$@)
 
 clean:
 	rm -vf $(TARGET) $(OBJS)

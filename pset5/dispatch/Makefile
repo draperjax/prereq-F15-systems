@@ -1,5 +1,4 @@
-CC = gcc
-CFLAGS = -std=gnu99 -g -W -Wall -Wshadow
+CFLAGS = -std=gnu99 -m32 -g -W -Wall -Wshadow
 LDFLAGS = -lpthread -lm
 
 DEPDIR := .d
@@ -29,12 +28,12 @@ $(DEPDIR)/%.d: ;
 
 check: all
 	@echo CHECKING
-	@./check.py ./$(TARGET) ./dispatch_tests
+	@python3 check.py ./$(TARGET) ./dispatch_tests
 
 clean:
 	@echo CLEANING
 	@rm -vf $(TARGET) $(OBJS)
 
-include $(patsubst %,$(DEPDIR)/%.d,$(basename $(SRCS)))
+-include $(patsubst %,$(DEPDIR)/%.d,$(basename $(SRCS)))
 
 .PHONY: all clean

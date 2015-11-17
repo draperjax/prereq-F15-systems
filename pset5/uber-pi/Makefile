@@ -1,5 +1,4 @@
-CC = gcc
-CFLAGS = -std=gnu99 -g -W -Wall -Wshadow
+CFLAGS = -std=gnu99 -m32 -g -W -Wall -Wshadow
 
 O ?= 3
 TARGET = uber-pi
@@ -21,6 +20,6 @@ clean:
 
 check: $(TARGET)
 	@echo CHECKING
-	@./check.py
+	@python3 check.py
 
 .PHONY: all clean
