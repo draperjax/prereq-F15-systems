@@ -519,6 +519,7 @@ int receive_request(void **ret, bool *isCustomer)
             if (!customer_completed(&customers[customerPos]))
             {
                 *ret = (void *)&customers[customerPos];
+                customerPos++;
                 pthread_mutex_unlock(&receive_request_lock);
                 return 0;
             }
@@ -540,6 +541,7 @@ int receive_request(void **ret, bool *isCustomer)
             if (!meal_completed(&meals[mealPos]))
             {
                 *ret = (void *)&meals[mealPos];
+                mealPos++;
                 pthread_mutex_unlock(&receive_request_lock);
                 return 0;
             }
