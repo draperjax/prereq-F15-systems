@@ -62,18 +62,13 @@ void* dispatcher_thread(void* arg) {
         nbytes = 0;
     }
 
-    // Lock the Mutex
-    pthread_mutex_lock(&(state->mutex));
-    
-    /* While trips completed is less than trips requested, 
+    /* While trips completed is not equal to trips requested, 
     wait for driver's 'done' signal */
-    while(state->numTripsComplete < state->numTripsRequested) {
+    pthread_mutex_lock(&(state->mutex));    
+    while(empty(state->request_queue) == 0)
         pthread_cond_wait(&(state->done), &(state->mutex));
-    }
 
-    state->finished = 1;
-
-    // Unlock the Mutex
+    pthread_cond_broadcast(&(state->trip));
     pthread_mutex_unlock(&(state->mutex));
 
     return NULL;
@@ -104,17 +99,15 @@ void dispatch(world_t* state, void* req) {
 void* driver_thread(void* arg) {
     world_t* state = (world_t*)arg;
     
-    // Lock the Mutex
+    /* With mutex locked, while queue is empty, wait for 
+        dispatcher's 'trip' signal */
     pthread_mutex_lock(&(state->mutex));
-    
-    /* While queue is empty & trips completed is not equal to trips requested,
-    wait for dispatcher's 'trip' signal */
     while (empty(state->request_queue) == 1)
         pthread_cond_wait(&(state->trip), &(state->mutex));
     pthread_mutex_unlock(&(state->mutex));
 
+    /* Once request detected, pop off queue & increment counter */
     while (empty(state->request_queue) == 0) {
-        // Pop request off the front of the queue & increment counter
         pthread_mutex_lock(&(state->mutex));
         request_t* req = pop_front(state->request_queue);
         state->numTripsComplete++;
@@ -123,7 +116,6 @@ void* driver_thread(void* arg) {
 
         // Perform the trip
         drive(req);
-
         usleep(2);
     }
 
