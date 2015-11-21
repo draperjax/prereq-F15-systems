@@ -10,7 +10,7 @@
 struct meal
 {
     struct private_tracking *stats;
-
+    pthread_mutex_t mutex;
     struct customer *customer;
     struct restaurant *restaurant;
 
@@ -20,7 +20,7 @@ struct meal
 struct customer
 {
     struct private_tracking *stats;
-
+    pthread_mutex_t mutex;
     struct meal *meal;
     struct location *location;
 

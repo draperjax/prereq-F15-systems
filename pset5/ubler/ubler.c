@@ -24,6 +24,7 @@
 #include <pthread.h>
 #include "ubler.h"
 #include "ubler_helpers.h"
+#include <stdio.h>
 
 /**
  * Describe your synchronization strategy here:
@@ -60,17 +61,22 @@ void *driver_thread(void *driver_arg)
             // you might want some synchronization here for part two...
 
             struct meal *meal = NULL;
+            pthread_mutex_lock(&(customer->mutex));
             customer_get_meal(customer, &meal);
-
+            pthread_mutex_unlock(&(customer->mutex));
 
             // you might want some synchronization here for parts one and two...
             // you might want some checks here for part two...
 
             struct restaurant *restaurant = NULL;
+            pthread_mutex_lock(&(meal->mutex));            
             meal_get_restaurant(meal, &restaurant);
+            pthread_mutex_unlock(&(meal->mutex));            
 
             struct location *srcLocation = NULL;
+            pthread_mutex_lock(&(customer->mutex));
             customer_get_location(customer, &srcLocation);
+            pthread_mutex_unlock(&(customer->mutex));
 
             struct location *destLocation = NULL;
             restaurant_get_location(restaurant, &destLocation);
@@ -80,10 +86,12 @@ void *driver_thread(void *driver_arg)
             if (customer_picked_up(customer) == 0 &&
                 meal_picked_up(meal) == 0)
             {
+                pthread_mutex_lock(&(customer->mutex));
                 driver_drive_to_location(driver, srcLocation);
                 driver_pick_customer_up(driver, customer);
                 driver_drive_to_location(driver, destLocation);
                 driver_drop_off_customer(driver, customer, restaurant);
+                pthread_mutex_unlock(&(customer->mutex));
             }
 
             // you might want some synchronization here for parts one and two...
@@ -95,30 +103,38 @@ void *driver_thread(void *driver_arg)
             // you might want some synchronization here for part two...
 
             struct customer *customer = NULL;
+            pthread_mutex_lock(&(meal->mutex));
             meal_get_customer(meal, &customer);
+            pthread_mutex_unlock(&(meal->mutex));
 
 
             // you might want some synchronization here for part two...
             // you might want some checks here for part two...
             
             struct restaurant *restaurant = NULL;
+            pthread_mutex_lock(&(meal->mutex));
             meal_get_restaurant(meal, &restaurant);
+            pthread_mutex_unlock(&(meal->mutex));
 
             struct location *srcLocation = NULL;
             restaurant_get_location(restaurant, &srcLocation);
 
             struct location *destLocation = NULL;
+            pthread_mutex_lock(&(customer->mutex));
             customer_get_location(customer, &destLocation);
+            pthread_mutex_unlock(&(customer->mutex));
 
             // you might want some synchronization here for part one...
 
             if (meal_picked_up(meal) == 0 &&
                 customer_picked_up(customer) == 0)
             {
+                pthread_mutex_lock(&(meal->mutex));
                 driver_drive_to_location(driver, srcLocation);
                 driver_pick_meal_up(driver, meal);
                 driver_drive_to_location(driver, destLocation);
                 driver_drop_off_meal(driver, meal, customer);
+                pthread_mutex_unlock(&(meal->mutex));
             }
 
             // you might want some synchronization here for parts one and two...
@@ -136,6 +152,11 @@ void init_meal(struct meal *meal)
 {
     meal->stats = private_tracking_create();
 
+    if (pthread_mutex_init(&(meal->mutex), NULL) != 0) {
+        perror("Mutex Initialization Error\n");
+        exit(1);
+    }
+
     meal->customer = NULL;
     meal->restaurant = NULL;
 
@@ -143,6 +164,7 @@ void init_meal(struct meal *meal)
 void cleanup_meal(struct meal *meal)
 {
     private_tracking_destroy(meal->stats);
+    pthread_mutex_destroy(&(meal->mutex));
 
 }
 
@@ -151,6 +173,11 @@ void init_customer(struct customer *customer)
 {
     customer->stats = private_tracking_create();
 
+    if (pthread_mutex_init(&(customer->mutex), NULL) != 0) {
+        perror("Mutex Initialization Error\n");
+        exit(1);
+    }
+
     customer->meal = NULL;
     customer->location = NULL;
 
@@ -158,6 +185,7 @@ void init_customer(struct customer *customer)
 void cleanup_customer(struct customer *customer)
 {
     private_tracking_destroy(customer->stats);
+    pthread_mutex_destroy(&(customer->mutex));
 
 }
 
