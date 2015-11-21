@@ -14,7 +14,9 @@ struct world {
     pthread_mutex_t mutex;
     pthread_cond_t trip;
     pthread_cond_t done;
-    int drivers_done;
+    int finished;
+    int numTripsRequested;
+    int numTripsComplete;
     // You need to add more states to the world here!
 };
 
