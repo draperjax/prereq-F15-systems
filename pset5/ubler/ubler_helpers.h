@@ -47,7 +47,11 @@ struct ubler_stats
 // tuning ubler parameters
 struct ubler_params
 {
+    // set in ubler.conf
     int sleepTime;
+    bool deliverMealsAndCustomers;
+
+    // passed in from command line
     bool mixUpMeals;
 };
 
