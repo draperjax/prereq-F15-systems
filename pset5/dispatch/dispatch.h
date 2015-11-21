@@ -13,6 +13,7 @@ struct world {
     request_t* req;
     pthread_mutex_t mutex;
     pthread_cond_t trip;
+    pthread_cond_t done;
     int drivers_done;
     // You need to add more states to the world here!
 };

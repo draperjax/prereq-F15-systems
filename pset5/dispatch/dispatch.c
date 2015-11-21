@@ -55,12 +55,11 @@ void* dispatcher_thread(void* arg) {
     }
 
     // Your code here!
-    pthread_mutex_lock(&(state->mutex));
-    while (state->drivers_done == 0)
-        pthread_cond_wait(&(state->trip), &(state->mutex));
-
-    pop_front(state->request_queue);
-    pthread_mutex_unlock(&(state->mutex));
+    // pthread_mutex_lock(&(state->mutex));
+    // while(state->drivers_done < 3) {
+    //     pthread_cond_wait(&(state->done), &(state->mutex));
+    // }
+    // pthread_mutex_unlock(&(state->mutex));
     return NULL;
 }
 
@@ -68,25 +67,34 @@ void* dispatcher_thread(void* arg) {
 void dispatch(world_t* state, void* req) {
     // Your code here!
 
+    pthread_mutex_lock(&(state->mutex));
     if (size(state->request_queue) < MAX_QUEUE_SIZE) {
-        pthread_mutex_lock(&(state->mutex));
         push_back(state->request_queue, req);
         pthread_cond_broadcast(&(state->trip));
-        pthread_mutex_unlock(&(state->mutex));
+    } else {
+        pthread_cond_wait(&(state->done), &(state->mutex));
+        push_back(state->request_queue, req);
+        pthread_cond_broadcast(&(state->trip));
     }
+    pthread_mutex_unlock(&(state->mutex));
 }
 
 void* driver_thread(void* arg) {
     world_t* state = (world_t*)arg;
     // Your code here!
     pthread_mutex_lock(&(state->mutex));
-    while (empty(state->request_queue) == 1)
+    while (empty(state->request_queue) == 1) {
         pthread_cond_wait(&(state->trip), &(state->mutex));
+    }
+    request_t* req = pop_front(state->request_queue);
+    state->drivers_done++;
     pthread_mutex_unlock(&(state->mutex));
 
-    request_t* req = ((request_t*)(state->request_queue->array));
-    drive(req);
-    state->drivers_done++;
+    drive(req);    
+
+    pthread_mutex_lock(&(state->mutex));
+    pthread_cond_broadcast(&(state->done));
+    pthread_mutex_unlock(&(state->mutex));
     
     return NULL;
 }
