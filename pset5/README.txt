@@ -4,7 +4,7 @@ OTHER COLLABORATORS AND CITATIONS (if any):
 
 
 
-NOTES FOR THE GRADER (if any): DO NOT GRADE: APPLYING LATE HOURS
+NOTES FOR THE GRADER (if any):
 
 WP-1. Lock (without a condition variable). Since only one jumper should be able to 'lock' the jump, and then complete it, there shouldn't be a need to signal to other jumps while the jump is still in play. Thus, a lock on the jump would allow a single player to jump for the ball and then unlock that play himself. 
 WP-2. Lock and a condition variable. Since the pancakes come in batches and we want every teen to be able to consume a complete batch as the batch occurs, once a complete batch is made we can signal to allow one teen to proceed and consume the batch.

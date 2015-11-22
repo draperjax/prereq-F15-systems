@@ -27,7 +27,7 @@
 #include <stdio.h>
 
 /**
- * Describe your synchronization strategy here:
+ * -- EXPLANATION --
  * My strategy leverages two mutexes that lock the meal struct and customer 
  * struct individually. The idea here is that prior to departing, the driver 
  * must make sure that the other part of the request (the part he/she didn't 

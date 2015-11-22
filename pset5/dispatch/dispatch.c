@@ -19,6 +19,11 @@
  ** driver pulls a request off of the queue.
  **/
 
+// Simulation of a Uber dispatch mechanism
+// This is the only file where you need to write your own code!
+// Your solution should not rely on modification to any other files!
+// See dispatch.h for descriptions of the following functions
+
 int init_world(world_t* state) {
     // Your code here!
 
@@ -30,13 +35,13 @@ int init_world(world_t* state) {
 
     //Initialize the CV
     if (pthread_cond_init(&(state->trip), NULL) != 0) {
-        perror("CV Initialization Failed\n");
+        perror("Trip CV Initialization Failed\n");
         exit(1);
     }
 
     //Initialize the CV
     if (pthread_cond_init(&(state->done), NULL) != 0) {
-        perror("CV Initialization Failed\n");
+        perror("Trip CV Initialization Failed\n");
         exit(1);
     }
 
@@ -76,9 +81,12 @@ void* dispatcher_thread(void* arg) {
         nbytes = 0;
     }
 
-    /* Set shared state to indicate dispatcher is done */
-    pthread_mutex_lock(&(state->mutex));    
+    // Set shared state to done to indicate nothing left to be done
     state->dispatchDone = 1;
+
+    /* While trips completed is not equal to trips requested, 
+    wait for driver's 'done' signal */
+    pthread_mutex_lock(&(state->mutex));
     pthread_cond_broadcast(&(state->trip));
     pthread_mutex_unlock(&(state->mutex));
 
@@ -88,51 +96,35 @@ void* dispatcher_thread(void* arg) {
 // Implement the actual dispatch() and driver_thread() methods
 void dispatch(world_t* state, void* req) {
     
-    // While queue is at capacity, wait for signal
+    // Lock the Mutex
     pthread_mutex_lock(&(state->mutex));    
-    while (size(state->request_queue) == MAX_QUEUE_SIZE) {
-        if (state->dispatchDone == 1) {
-            pthread_mutex_unlock(&(state->mutex));
-            break;
-        }
-        pthread_cond_wait(&(state->done), &(state->mutex));
-    }
-    pthread_mutex_unlock(&(state->mutex));
 
-    // Push request onto queue & send signal to wake up one driver
-    pthread_mutex_lock(&(state->mutex));
+    // While queue is at capacity, wait for driver's 'done' signal
+    while (size(state->request_queue) == MAX_QUEUE_SIZE)
+        pthread_cond_wait(&(state->done), &(state->mutex));
+
+    // Push request onto queue & broadcast 'trip' signal to wake drivers
     if (size(state->request_queue) < MAX_QUEUE_SIZE) {
         push_back(state->request_queue, req);
         pthread_cond_signal(&(state->trip));
     }
+
     pthread_mutex_unlock(&(state->mutex));
 
 }
 
 void* driver_thread(void* arg) {
     world_t* state = (world_t*)arg;
-    struct timeval tv;
-    struct timespec ts;
-
-    gettimeofday(&tv, NULL);
-    ts.tv_nsec = 0;
-    ts.tv_sec = tv.tv_sec + 1;
-
-    // While queue is empty, wait for signal
+    
+    /* With mutex locked, while queue is empty, wait for 
+        dispatcher's 'trip' signal */
     pthread_mutex_lock(&(state->mutex));
-    while (empty(state->request_queue) == 1) {
-        if (state->dispatchDone == 1) {
-            pthread_mutex_unlock(&(state->mutex));
-            return NULL;    
-        }
-        if (pthread_cond_timedwait(&(state->trip), &(state->mutex), &ts) != 0)
-            perror("Driver: Timed wait error\n");
-    }
+    while (empty(state->request_queue) == 1 && state->dispatchDone != 1)
+        pthread_cond_wait(&(state->trip), &(state->mutex));
     pthread_mutex_unlock(&(state->mutex));
 
-    
-    while (size(state->request_queue) != 0) {
-        // Once request detected, pop off queue & increment counter
+    /* Once request detected, pop off queue & increment counter */
+    while (empty(state->request_queue) == 0) {
         pthread_mutex_lock(&(state->mutex));
         request_t* req = pop_front(state->request_queue);
         pthread_cond_broadcast(&(state->done));
@@ -140,7 +132,7 @@ void* driver_thread(void* arg) {
 
         // Perform the trip
         drive(req);
-        free(req);
+        usleep(2);
     }
 
     return NULL;
