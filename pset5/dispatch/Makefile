@@ -5,7 +5,7 @@ DEPDIR := .d
 $(shell mkdir -p $(DEPDIR) > /dev/null)
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.Td
 
-O ?= 0
+O ?= 2
 TARGET = dispatch_test
 SRCS = queue.c drive.c dispatch.c dispatch_test.c
 OBJS = $(SRCS:.c=.o)

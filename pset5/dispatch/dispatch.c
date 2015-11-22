@@ -68,11 +68,8 @@ void* dispatcher_thread(void* arg) {
     /* While trips completed is not equal to trips requested, 
     wait for driver's 'done' signal */
     pthread_mutex_lock(&(state->mutex));    
-    while(empty(state->request_queue) == 0)
-        pthread_cond_wait(&(state->done), &(state->mutex));
-    
-    pthread_cond_broadcast(&(state->trip));
     state->dispatchDone = 1;
+    pthread_cond_broadcast(&(state->trip));
     pthread_mutex_unlock(&(state->mutex));
     return NULL;
 }
@@ -86,14 +83,16 @@ void dispatch(world_t* state, void* req) {
     // While queue is at capacity, wait for driver's 'done' signal
     while (size(state->request_queue) == MAX_QUEUE_SIZE)
         pthread_cond_wait(&(state->done), &(state->mutex));
+    pthread_mutex_unlock(&(state->mutex));
 
+    pthread_mutex_lock(&(state->mutex));
     // Push request onto queue & broadcast 'trip' signal to wake drivers
     if (size(state->request_queue) < MAX_QUEUE_SIZE) {
         push_back(state->request_queue, req);
         pthread_cond_signal(&(state->trip));
     }
-
     pthread_mutex_unlock(&(state->mutex));
+
 
 }
 
