@@ -28,7 +28,14 @@
 
 /**
  * Describe your synchronization strategy here:
- *   
+ * My strategy leverages two mutexes that lock the meal struct and customer 
+ * struct individually. The idea here is that prior to departing, the driver 
+ * must make sure that the other part of the request (the part he/she didn't 
+ * receive) is not en route, so every check involving that object should be 
+ * protected. Only after that should the driver then first lock the part of 
+ * the request he doesn't have, then lock the part of the request he is dropping 
+ * off, complete the drop-off and then release the lock on the part he doesn't 
+ * have and then release the lock on the part he has.
  */
 
 // Ignore this function unless you are doing the extra challenge
@@ -86,11 +93,13 @@ void *driver_thread(void *driver_arg)
             if (customer_picked_up(customer) == 0 &&
                 meal_picked_up(meal) == 0)
             {
+                pthread_mutex_lock(&(meal->mutex));
                 pthread_mutex_lock(&(customer->mutex));
                 driver_drive_to_location(driver, srcLocation);
                 driver_pick_customer_up(driver, customer);
                 driver_drive_to_location(driver, destLocation);
                 driver_drop_off_customer(driver, customer, restaurant);
+                pthread_mutex_unlock(&(meal->mutex));
                 pthread_mutex_unlock(&(customer->mutex));
             }
 
@@ -129,11 +138,13 @@ void *driver_thread(void *driver_arg)
             if (meal_picked_up(meal) == 0 &&
                 customer_picked_up(customer) == 0)
             {
+                pthread_mutex_lock(&(customer->mutex));
                 pthread_mutex_lock(&(meal->mutex));
                 driver_drive_to_location(driver, srcLocation);
                 driver_pick_meal_up(driver, meal);
                 driver_drive_to_location(driver, destLocation);
                 driver_drop_off_meal(driver, meal, customer);
+                pthread_mutex_unlock(&(customer->mutex));
                 pthread_mutex_unlock(&(meal->mutex));
             }
 

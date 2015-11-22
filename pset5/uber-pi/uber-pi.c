@@ -13,6 +13,28 @@
 // timestamp()
 //    Return the current time as a double.
 
+/* -- EXPLANATION -- 
+Better Init:
+Synchronization strategy: Leverage Randomization to decrease the likelihood 
+of a passenger waiting on a specific uber car (i.e.) choose any of the fleet 
+that may be available.
+
+Correctness criteria/Why it works: This is a correct better initialization 
+for uber-pi because it introduces randomization in the choice of the uber car. 
+This strategy increases the likelihood that the passenger is not waiting for 
+a specific uber car, and thereby decreases the time passengers are waiting 
+to acquire the lock and be driven.
+
+Trylock:
+Synchronization Strategy: Leverage Trylocks & Randomization to decrease the 
+likelihood of a passenger waiting on a specific uber car and to avoid the 
+passenger being blocked from checking other cars while waiting.
+Correctness criteria/Why it works: This is a correct trylock initialization 
+for uber-pi because it tests all calls in the uber fleet without waiting while 
+blocked, first, and then once it discovers all are busy, it waits on one 
+(to avoid endless trylock attempts).
+*/
+
 static inline double timestamp(void) {
     struct timeval tv;
     gettimeofday(&tv, NULL);
