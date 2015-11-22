@@ -10,13 +10,10 @@
 // The world struct: the shared view of the Uber world
 struct world {
     queue_t* request_queue;
-    request_t* req;
     pthread_mutex_t mutex;
     pthread_cond_t trip;
     pthread_cond_t done;
-    int finished;
-    int numTripsRequested;
-    int numTripsComplete;
+    int dispatchDone;
     // You need to add more states to the world here!
 };
 
