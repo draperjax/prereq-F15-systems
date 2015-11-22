@@ -87,12 +87,6 @@ void* dispatcher_thread(void* arg) {
 
 // Implement the actual dispatch() and driver_thread() methods
 void dispatch(world_t* state, void* req) {
-    struct timeval tv;
-    struct timespec ts;
-
-    gettimeofday(&tv, NULL);
-    ts.tv_nsec = 0;
-    ts.tv_sec = tv.tv_sec + 1;
     
     // While queue is at capacity, wait for signal
     pthread_mutex_lock(&(state->mutex));    
