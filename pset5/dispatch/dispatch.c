@@ -3,6 +3,8 @@
 // Your solution should not rely on modification to any other files!
 // See dispatch.h for descriptions of the following functions
 #include "dispatch.h"
+#include <sys/time.h>
+
 /**
  ** -- EXPLANATION --
  ** My strategy leverages mutexes with two conditionval variables, 
@@ -85,11 +87,22 @@ void* dispatcher_thread(void* arg) {
 
 // Implement the actual dispatch() and driver_thread() methods
 void dispatch(world_t* state, void* req) {
+    struct timeval tv;
+    struct timespec ts;
+
+    gettimeofday(&tv, NULL);
+    ts.tv_nsec = 0;
+    ts.tv_sec = tv.tv_sec + 1;
     
     // While queue is at capacity, wait for signal
     pthread_mutex_lock(&(state->mutex));    
-    while (size(state->request_queue) == MAX_QUEUE_SIZE)
+    while (size(state->request_queue) == MAX_QUEUE_SIZE) {
+        if (state->dispatchDone == 1) {
+            pthread_mutex_unlock(&(state->mutex));
+            break;
+        }
         pthread_cond_wait(&(state->done), &(state->mutex));
+    }
     pthread_mutex_unlock(&(state->mutex));
 
     // Push request onto queue & send signal to wake up one driver
@@ -104,24 +117,31 @@ void dispatch(world_t* state, void* req) {
 
 void* driver_thread(void* arg) {
     world_t* state = (world_t*)arg;
+    struct timeval tv;
+    struct timespec ts;
 
-    /* While queue is empty, wait for signal */
+    gettimeofday(&tv, NULL);
+    ts.tv_nsec = 0;
+    ts.tv_sec = tv.tv_sec + 1;
+
+    // While queue is empty, wait for signal
     pthread_mutex_lock(&(state->mutex));
     while (empty(state->request_queue) == 1) {
         if (state->dispatchDone == 1) {
             pthread_mutex_unlock(&(state->mutex));
             return NULL;    
         }
-        pthread_cond_wait(&(state->trip), &(state->mutex));
+        if (pthread_cond_timedwait(&(state->trip), &(state->mutex), &ts) != 0)
+            perror("Driver: Timed wait error\n");
     }
     pthread_mutex_unlock(&(state->mutex));
 
     
     while (size(state->request_queue) != 0) {
-        /* Once request detected, pop off queue & increment counter */
+        // Once request detected, pop off queue & increment counter
         pthread_mutex_lock(&(state->mutex));
         request_t* req = pop_front(state->request_queue);
-        pthread_cond_signal(&(state->done));
+        pthread_cond_broadcast(&(state->done));
         pthread_mutex_unlock(&(state->mutex));
 
         // Perform the trip

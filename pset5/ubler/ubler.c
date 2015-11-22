@@ -90,18 +90,18 @@ void *driver_thread(void *driver_arg)
 
             // you might want some synchronization here for part one...
 
+            pthread_mutex_lock(&(meal->mutex));
+            pthread_mutex_lock(&(customer->mutex));
             if (customer_picked_up(customer) == 0 &&
                 meal_picked_up(meal) == 0)
             {
-                pthread_mutex_lock(&(meal->mutex));
-                pthread_mutex_lock(&(customer->mutex));
                 driver_drive_to_location(driver, srcLocation);
                 driver_pick_customer_up(driver, customer);
                 driver_drive_to_location(driver, destLocation);
                 driver_drop_off_customer(driver, customer, restaurant);
-                pthread_mutex_unlock(&(meal->mutex));
-                pthread_mutex_unlock(&(customer->mutex));
             }
+            pthread_mutex_unlock(&(meal->mutex));
+            pthread_mutex_unlock(&(customer->mutex));
 
             // you might want some synchronization here for parts one and two...
         }
@@ -135,18 +135,18 @@ void *driver_thread(void *driver_arg)
 
             // you might want some synchronization here for part one...
 
+            pthread_mutex_lock(&(customer->mutex));
+            pthread_mutex_lock(&(meal->mutex));
             if (meal_picked_up(meal) == 0 &&
                 customer_picked_up(customer) == 0)
             {
-                pthread_mutex_lock(&(customer->mutex));
-                pthread_mutex_lock(&(meal->mutex));
                 driver_drive_to_location(driver, srcLocation);
                 driver_pick_meal_up(driver, meal);
                 driver_drive_to_location(driver, destLocation);
                 driver_drop_off_meal(driver, meal, customer);
-                pthread_mutex_unlock(&(customer->mutex));
-                pthread_mutex_unlock(&(meal->mutex));
             }
+            pthread_mutex_unlock(&(customer->mutex));
+            pthread_mutex_unlock(&(meal->mutex));
 
             // you might want some synchronization here for parts one and two...
         }

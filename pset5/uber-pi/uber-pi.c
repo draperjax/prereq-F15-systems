@@ -100,6 +100,7 @@ void* passenger(void* params) {
 
 void* passenger_better_init(void* params) {
 	int me = (int)params;
+	//randomize choice of uber car to avoid waiting on a specific car
 	for (int k = 0; k < RIDES_PER_PASSENGER; ++k) {
 		int uber = (rand() % NUM_UBERS);
 		pthread_mutex_lock(&uber_locks[uber]);
@@ -113,13 +114,19 @@ void* passenger_trylock(void* params) {
 	int me = (int)params;
 
 	for (int k = 0; k < RIDES_PER_PASSENGER; ++k) {
+		//randomize choice of uber car to avoid waiting on a specific car
 		int uber = (rand() % NUM_UBERS);
+		
+		//setup counter to see if all ubers have been checked
 		int counter = 0;
+
+		//attempt a trylock and if it fails, check others until tested all
 		while (pthread_mutex_trylock(&uber_locks[uber]) != 0) {
 			if (counter < NUM_UBERS) {
 				uber = (rand() % NUM_UBERS);
 				counter++;
 			} else {
+				//all have been tested, so wait on one
 				pthread_mutex_lock(&uber_locks[uber]);
 				break;
 			}
