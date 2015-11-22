@@ -65,18 +65,15 @@ void* dispatcher_thread(void* arg) {
         nbytes = 0;
     }
 
-    // Set shared state to done to indicate nothing left to be done
-    state->dispatchDone = 1;
-
     /* While trips completed is not equal to trips requested, 
     wait for driver's 'done' signal */
     pthread_mutex_lock(&(state->mutex));    
     while(empty(state->request_queue) == 0)
         pthread_cond_wait(&(state->done), &(state->mutex));
-
+    
     pthread_cond_broadcast(&(state->trip));
+    state->dispatchDone = 1;
     pthread_mutex_unlock(&(state->mutex));
-
     return NULL;
 }
 
@@ -102,11 +99,11 @@ void dispatch(world_t* state, void* req) {
 
 void* driver_thread(void* arg) {
     world_t* state = (world_t*)arg;
-    
+
     /* With mutex locked, while queue is empty, wait for 
         dispatcher's 'trip' signal */
     pthread_mutex_lock(&(state->mutex));
-    while (empty(state->request_queue) == 1) {
+    while (state->dispatchDone != 1 && empty(state->request_queue) == 1) {
         pthread_cond_wait(&(state->trip), &(state->mutex));
     }
 
@@ -121,10 +118,7 @@ void* driver_thread(void* arg) {
 
         // Perform the trip
         drive(req);
-        usleep(2);
-
-        if (state->dispatchDone == 1)
-            exit(0);
+        usleep(2);            
     }
 
     return NULL;

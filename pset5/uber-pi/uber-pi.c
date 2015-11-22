@@ -94,7 +94,7 @@ void* passenger_trylock(void* params) {
 		int uber = (rand() % NUM_UBERS);
 		int counter = 0;
 		while (pthread_mutex_trylock(&uber_locks[uber]) != 0) {
-			if (counter < 4) {
+			if (counter < NUM_UBERS) {
 				uber = (rand() % NUM_UBERS);
 				counter++;
 			} else {
