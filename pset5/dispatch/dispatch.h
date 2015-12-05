@@ -11,8 +11,8 @@
 struct world {
     queue_t* request_queue;
     pthread_mutex_t mutex;
-    pthread_cond_t trip;
-    pthread_cond_t done;
+    pthread_cond_t tripEnqueued;
+    pthread_cond_t tripDequeued;
     int dispatchDone;
     // You need to add more states to the world here!
 };

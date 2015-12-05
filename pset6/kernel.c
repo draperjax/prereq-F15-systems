@@ -93,6 +93,13 @@ void kernel(const char* command) {
         processes[i].p_state = P_FREE;
     }
 
+    //JSJ Edit: (STEP 1) Set kernel memory so everyone else is Read-Only
+    virtual_memory_map(kernel_pagetable, 0, 0, (size_t) console, PTE_P|PTE_W);
+    virtual_memory_map(kernel_pagetable, 
+        (uintptr_t) console + PAGESIZE, (uintptr_t) console + PAGESIZE,
+        (size_t) (PROC_START_ADDR - ((uintptr_t) console + PAGESIZE)), PTE_P|PTE_W);
+    //JSJ - Edit End
+
     if (command && strcmp(command, "fork") == 0)
         process_setup(1, 4);
     else if (command && strcmp(command, "forkexit") == 0)
@@ -106,6 +113,56 @@ void kernel(const char* command) {
 }
 
 
+uintptr_t free_pages() {
+    uintptr_t pa = 0;
+    for (pa = 0; pa < MEMSIZE_PHYSICAL; pa += PAGESIZE) {
+        if (pageinfo[PAGENUMBER(pa)].owner == PO_FREE &&
+            pageinfo[PAGENUMBER(pa)].refcount == 0)
+            return pa;
+    }
+    return -1;
+}
+
+// copy_pagetable(pagetable, owner)
+//    Allocates and returns a new pagetable initialized as copy of pagetable
+x86_pagetable* copy_pagetable(x86_pagetable* pagetable, int8_t owner) {
+    // Create the new L1 Page Table & set state/owner
+    uintptr_t L1_PT = free_pages();
+    physical_page_alloc(L1_PT, owner);
+
+    // Copy the existing page table to the newly created L1 page table
+    memcpy((void*) PTE_ADDR(L1_PT), (void*) PTE_ADDR(pagetable), sizeof(x86_pagetable));
+
+    // Create the new L2 Page Table & set state/owner
+    uintptr_t L2_PT = free_pages();
+    physical_page_alloc(L2_PT, owner);
+
+    // Set the 1st entry of the L1 Page Table to address of L2
+    ((x86_pagetable*) L1_PT)->entry[0] = (x86_pageentry_t) L2_PT | PTE_P | PTE_W | PTE_U;
+
+    //Zero out the L2 Page table
+    //memset((void*) L2_PT, 0, sizeof(x86_pagetable));
+
+    // Copy the existing page table to the newly created L2 page table
+    memcpy((void*) PTE_ADDR(L2_PT), (void*) PTE_ADDR(pagetable->entry[0]), sizeof(x86_pagetable));
+
+    for (int i = 0; i < MEMSIZE_VIRTUAL/PAGESIZE; i++) {
+        uintptr_t va = i * PAGESIZE;
+
+        vamapping vam = virtual_memory_lookup((x86_pagetable*) L1_PT, va);
+
+        if (vam.pn != -1) {
+            if (vam.pa >= PROC_START_ADDR) {
+                virtual_memory_map((x86_pagetable*) L1_PT,va,vam.pa,PAGESIZE,0);
+            } else {
+                virtual_memory_map((x86_pagetable*) L1_PT,va,vam.pa,PAGESIZE,vam.perm);   
+            }            
+        }
+    }
+
+    return (x86_pagetable*) L1_PT;
+}
+
 // process_setup(pid, program_number)
 //    Load application program `program_number` as process number `pid`.
 //    This loads the application's code and data into memory, sets its
@@ -113,18 +170,21 @@ void kernel(const char* command) {
 
 void process_setup(pid_t pid, int program_number) {
     process_init(&processes[pid], 0);
-    processes[pid].p_pagetable = kernel_pagetable;
-    ++pageinfo[PAGENUMBER(kernel_pagetable)].refcount;
+
+    //JSJ Edit: (STEP 2) Set current parent process ID to input
+    processes[pid].p_pagetable = copy_pagetable(kernel_pagetable, pid);
+    //JSJ End
+
+    //++pageinfo[PAGENUMBER(kernel_pagetable)].refcount;
     int r = program_load(&processes[pid], program_number);
     assert(r >= 0);
-    processes[pid].p_registers.reg_esp = PROC_START_ADDR + PROC_SIZE * pid;
-    uintptr_t stack_page = processes[pid].p_registers.reg_esp - PAGESIZE;
+    processes[pid].p_registers.reg_esp = MEMSIZE_VIRTUAL;
+    uintptr_t stack_page = free_pages();
     physical_page_alloc(stack_page, pid);
-    virtual_memory_map(processes[pid].p_pagetable, stack_page, stack_page,
-                       PAGESIZE, PTE_P|PTE_W|PTE_U);
+    virtual_memory_map(processes[pid].p_pagetable, processes[pid].p_registers.reg_esp - PAGESIZE, 
+                       stack_page, PAGESIZE, PTE_P|PTE_W|PTE_U);
     processes[pid].p_state = P_RUNNABLE;
 }
-
 
 // physical_page_alloc(addr, owner)
 //    Allocates the page with physical address `addr` to the given owner.

@@ -34,13 +34,13 @@ int init_world(world_t* state) {
     }
 
     //Initialize the CV
-    if (pthread_cond_init(&(state->trip), NULL) != 0) {
+    if (pthread_cond_init(&(state->tripEnqueued), NULL) != 0) {
         perror("Trip CV Initialization Failed\n");
         exit(1);
     }
 
     //Initialize the CV
-    if (pthread_cond_init(&(state->done), NULL) != 0) {
+    if (pthread_cond_init(&(state->tripDequeued), NULL) != 0) {
         perror("Trip CV Initialization Failed\n");
         exit(1);
     }
@@ -55,7 +55,7 @@ int init_world(world_t* state) {
     //Initialize the Queue
     queue_init(state->request_queue);
     state->dispatchDone = 0;
-
+    pthread_cond_broadcast(&(state->tripEnqueued));
     return 0;
 }
 
@@ -81,13 +81,13 @@ void* dispatcher_thread(void* arg) {
         nbytes = 0;
     }
 
-    // Set shared state to done to indicate nothing left to be done
-    state->dispatchDone = 1;
-
     /* While trips completed is not equal to trips requested, 
     wait for driver's 'done' signal */
     pthread_mutex_lock(&(state->mutex));
-    pthread_cond_broadcast(&(state->trip));
+    
+    // Set shared state to done to indicate nothing left to be done
+    state->dispatchDone = 1;
+    pthread_cond_broadcast(&(state->tripEnqueued));
     pthread_mutex_unlock(&(state->mutex));
 
     return NULL;
@@ -101,12 +101,12 @@ void dispatch(world_t* state, void* req) {
 
     // While queue is at capacity, wait for driver's 'done' signal
     while (size(state->request_queue) == MAX_QUEUE_SIZE)
-        pthread_cond_wait(&(state->done), &(state->mutex));
+        pthread_cond_wait(&(state->tripDequeued), &(state->mutex));
 
     // Push request onto queue & broadcast 'trip' signal to wake drivers
     if (size(state->request_queue) < MAX_QUEUE_SIZE) {
         push_back(state->request_queue, req);
-        pthread_cond_signal(&(state->trip));
+        pthread_cond_signal(&(state->tripEnqueued));
     }
 
     pthread_mutex_unlock(&(state->mutex));
@@ -119,21 +119,21 @@ void* driver_thread(void* arg) {
     /* With mutex locked, while queue is empty, wait for 
         dispatcher's 'trip' signal */
     pthread_mutex_lock(&(state->mutex));
-    while (empty(state->request_queue) == 1 && state->dispatchDone != 1)
-        pthread_cond_wait(&(state->trip), &(state->mutex));
-    pthread_mutex_unlock(&(state->mutex));
+    while (state->dispatchDone != 1) {
 
-    /* Once request detected, pop off queue & increment counter */
-    while (empty(state->request_queue) == 0) {
-        pthread_mutex_lock(&(state->mutex));
-        request_t* req = pop_front(state->request_queue);
-        pthread_cond_broadcast(&(state->done));
-        pthread_mutex_unlock(&(state->mutex));
+        if (empty(state->request_queue) == 1)
+            pthread_cond_wait(&(state->tripEnqueued), &(state->mutex));
 
-        // Perform the trip
-        drive(req);
-        usleep(2);
+        //check if somethings on queue or its done and we should exit
+        if (size(state->request_queue) > 0) {
+            /* Once request detected, pop off queue & increment counter */
+            request_t* req = pop_front(state->request_queue);
+            pthread_cond_broadcast(&(state->tripDequeued));
+
+            // Perform the trip
+            drive(req);
+        }
     }
-
+    pthread_mutex_unlock(&(state->mutex));
     return NULL;
 }
