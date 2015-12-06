@@ -120,7 +120,6 @@ void* driver_thread(void* arg) {
         dispatcher's 'trip' signal */
     pthread_mutex_lock(&(state->mutex));
     while (state->dispatchDone != 1) {
-
         if (empty(state->request_queue) == 1)
             pthread_cond_wait(&(state->tripEnqueued), &(state->mutex));
 
@@ -128,7 +127,7 @@ void* driver_thread(void* arg) {
         if (size(state->request_queue) > 0) {
             /* Once request detected, pop off queue & increment counter */
             request_t* req = pop_front(state->request_queue);
-            pthread_cond_broadcast(&(state->tripDequeued));
+            pthread_cond_signal(&(state->tripDequeued));
 
             // Perform the trip
             drive(req);
