@@ -7,7 +7,90 @@ you have followed the rules for the exam by writing, "I have I have neither
 given nor received help on this exam and have followed the rules as stated."
 Then type your name beneath it, indicating compliance.
 
-I will push a new copy of this file closer to the exam date. When I do so, I will
-announce it on Piazza. Please pull the latest copy before the exam on 12/12, so
-you will be ready to go when the exam begins.
+1. Data Representation
 
+=-=-=-=-=-=
+2. Memory Layout
+A
+B
+C
+D
+E
+F
+G
+H
+I
+J
+=-=-=-=-=-=
+3. Pot Pourri
+A
+B
+C
+D
+E
+F
+G
+H
+I
+J
+K
+L
+M
+N
+O
+P
+Q
+R
+S
+T
+=-=-=-=-=-=
+4. Assembly and Data Structures
+A
+B
+C
+=-=-=-=-=-=
+5. Memory and Pointers
+
+=-=-=-=-=-=
+6. Teensy OS VM System
+A
+B
+C
+D
+E
+F
+G
+H
+=-=-=-=-=-=
+7. Teensy OS Page Tables
+A
+B
+C
+D
+E
+F
+G
+H
+=-=-=-=-=-=
+8. Processes
+A
+B
+C
+D
+E
+F
+=-=-=-=-=-=
+9. Synchronization
+A
+B
+C
+D
+E
+F
+=-=-=-=-=-=
+10. Network Servers
+A
+B
+C
+D
+E
