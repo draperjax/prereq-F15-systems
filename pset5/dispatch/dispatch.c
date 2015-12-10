@@ -25,34 +25,32 @@
 // See dispatch.h for descriptions of the following functions
 
 int init_world(world_t* state) {
-    // Your code here!
-
-    //Initialize the Mutex
+    // Initialize the Mutex
     if (pthread_mutex_init(&(state->mutex), NULL) != 0) {
         perror("Mutex Initialization Error\n");
         exit(1);
     }
 
-    //Initialize the CV
+    // Initialize the CV
     if (pthread_cond_init(&(state->tripEnqueued), NULL) != 0) {
         perror("Trip CV Initialization Failed\n");
         exit(1);
     }
 
-    //Initialize the CV
+    // Initialize the CV
     if (pthread_cond_init(&(state->tripDequeued), NULL) != 0) {
         perror("Trip CV Initialization Failed\n");
         exit(1);
     }
 
-    //Allocation Space for the Queue
+    // Allocation Space for the Queue
     state->request_queue = (queue_t*) malloc(sizeof(queue_t));
     if (state->request_queue == NULL) {
         perror("Malloc of World State Failed\n");
         exit(1);
     }
 
-    //Initialize the Queue
+    // Initialize the Queue
     queue_init(state->request_queue);
     state->dispatchDone = 0;
     pthread_cond_broadcast(&(state->tripEnqueued));
