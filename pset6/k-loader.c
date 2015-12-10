@@ -88,5 +88,15 @@ static int program_load_segment(proc* p, const elf_program* ph,
 
     memcpy((uint8_t*) va, src, end_file - va);
     memset((uint8_t*) end_file, 0, end_mem - end_file);
+
+    // Detect read-only program segments & map them as read-only 
+    //      for applications (PTE_U | PTE_P)
+    for (uintptr_t pn = va; pn < end_mem; pn += PAGESIZE) {
+        if ((ph->p_flags & ELF_PFLAG_WRITE) == 0) {
+            virtual_memory_map(p->p_pagetable, pn, pn, PAGESIZE, 
+                PTE_P | PTE_U);
+        }
+    }
+
     return 0;
 }

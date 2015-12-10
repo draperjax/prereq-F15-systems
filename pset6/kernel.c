@@ -98,7 +98,6 @@ void kernel(const char* command) {
     virtual_memory_map(kernel_pagetable, 
         (uintptr_t) console + PAGESIZE, (uintptr_t) console + PAGESIZE,
         (size_t) (PROC_START_ADDR - ((uintptr_t) console + PAGESIZE)), PTE_P|PTE_W);
-    //JSJ - Edit End
 
     if (command && strcmp(command, "fork") == 0)
         process_setup(1, 4);
@@ -112,7 +111,8 @@ void kernel(const char* command) {
     run(&processes[1]);
 }
 
-
+// JSJ Edit: (STEP 2) Find free page and returns address
+// free_pages
 uintptr_t free_pages() {
     uintptr_t pa = 0;
     for (pa = 0; pa < MEMSIZE_PHYSICAL; pa += PAGESIZE) {
@@ -123,11 +123,16 @@ uintptr_t free_pages() {
     return -1;
 }
 
+// JSJ Edit: (STEP 2) Setup function to copy the pagetable
 // copy_pagetable(pagetable, owner)
 //    Allocates and returns a new pagetable initialized as copy of pagetable
 x86_pagetable* copy_pagetable(x86_pagetable* pagetable, int8_t owner) {
     // Create the new L1 Page Table & set state/owner
     uintptr_t L1_PT = free_pages();
+    if (L1_PT == (uintptr_t) -1) {
+        console_printf(CPOS(24, 0), 0x0C00, "Unable to setup L1 Pagetable");
+        return (x86_pagetable*) -1;
+    }
     physical_page_alloc(L1_PT, owner);
 
     // Copy the existing page table to the newly created L1 page table
@@ -135,29 +140,23 @@ x86_pagetable* copy_pagetable(x86_pagetable* pagetable, int8_t owner) {
 
     // Create the new L2 Page Table & set state/owner
     uintptr_t L2_PT = free_pages();
+    if (L2_PT == (uintptr_t) -1) {
+        console_printf(CPOS(24, 0), 0x0C00, "Unable to setup L2 Pagetable");
+        return (x86_pagetable*) -1;
+    }
     physical_page_alloc(L2_PT, owner);
 
     // Set the 1st entry of the L1 Page Table to address of L2
     ((x86_pagetable*) L1_PT)->entry[0] = (x86_pageentry_t) L2_PT | PTE_P | PTE_W | PTE_U;
 
-    //Zero out the L2 Page table
-    //memset((void*) L2_PT, 0, sizeof(x86_pagetable));
-
     // Copy the existing page table to the newly created L2 page table
     memcpy((void*) PTE_ADDR(L2_PT), (void*) PTE_ADDR(pagetable->entry[0]), sizeof(x86_pagetable));
 
-    for (int i = 0; i < MEMSIZE_VIRTUAL/PAGESIZE; i++) {
-        uintptr_t va = i * PAGESIZE;
-
+    // Loop through VA Space, check VA in current PT, and if it exists then map
+    for (uintptr_t va = PROC_START_ADDR; va < MEMSIZE_VIRTUAL; va += PAGESIZE) {
         vamapping vam = virtual_memory_lookup((x86_pagetable*) L1_PT, va);
-
-        if (vam.pn != -1) {
-            if (vam.pa >= PROC_START_ADDR) {
-                virtual_memory_map((x86_pagetable*) L1_PT,va,vam.pa,PAGESIZE,0);
-            } else {
-                virtual_memory_map((x86_pagetable*) L1_PT,va,vam.pa,PAGESIZE,vam.perm);   
-            }            
-        }
+        if (vam.pn != -1)
+            virtual_memory_map((x86_pagetable*) L1_PT, va, vam.pa, PAGESIZE, 0);
     }
 
     return (x86_pagetable*) L1_PT;
@@ -173,13 +172,17 @@ void process_setup(pid_t pid, int program_number) {
 
     //JSJ Edit: (STEP 2) Set current parent process ID to input
     processes[pid].p_pagetable = copy_pagetable(kernel_pagetable, pid);
-    //JSJ End
 
     //++pageinfo[PAGENUMBER(kernel_pagetable)].refcount;
     int r = program_load(&processes[pid], program_number);
     assert(r >= 0);
     processes[pid].p_registers.reg_esp = MEMSIZE_VIRTUAL;
     uintptr_t stack_page = free_pages();
+    if (stack_page == (uintptr_t) -1) {
+        console_printf(CPOS(24, 0), 0x0C00, "Unable to setup Stack Page");
+        return;
+    }
+
     physical_page_alloc(stack_page, pid);
     virtual_memory_map(processes[pid].p_pagetable, processes[pid].p_registers.reg_esp - PAGESIZE, 
                        stack_page, PAGESIZE, PTE_P|PTE_W|PTE_U);
@@ -203,6 +206,78 @@ int physical_page_alloc(uintptr_t addr, int8_t owner) {
     }
 }
 
+// JSJ Edit: (STEP 5) Support process forking
+// fork function: Supports interrupt to fork process 
+//    Looks for free process slot in 'processes[]' array, and then 
+//    sets up child, copies pagetable
+void fork() {
+    proc* child = NULL;
+
+    // Find first free process slot, not incl. slot 0
+    for (int i = 1; i < NPROC; i++) {
+        if (processes[i].p_state == P_FREE) {
+            child = &processes[i];
+            child->p_pid = i;
+            break;
+        }
+    }
+
+    // If no free slots exist, set reg %eax to -1 and return
+    if (child == NULL) {
+        console_printf(CPOS(24, 0), 0x0C00, "No free process slots exist!");
+        current->p_registers.reg_eax = -1;
+        return;
+    }
+
+    // Setup Child 
+    child->p_registers = current->p_registers;
+    child->p_registers.reg_eax = 0;
+    current->p_registers.reg_eax = child->p_pid;
+    child->p_state = P_RUNNABLE;
+
+    // Copy pagetable
+    x86_pagetable* current_pt = copy_pagetable(current->p_pagetable, child->p_pid);
+
+    // If copy fails, set reg %eax to -1 and return
+    if (current_pt == (x86_pagetable*) -1) {
+        console_printf(CPOS(24, 0), 0x0C00, "Unable to setup Parent Pagetable!");
+        current->p_registers.reg_eax = -1;
+        return;
+    }
+
+    //  Set Child's Pagetable to Newly Copied Pagetable
+    child->p_pagetable = current_pt;
+
+    // Loop over VA space, check VA in current PT and if it exists, then copy & map
+    for (uintptr_t va = PROC_START_ADDR; va < MEMSIZE_VIRTUAL; va += PAGESIZE) {
+        vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
+        if (vam.pn != -1) {
+            if (vam.perm & PTE_W) {
+                // Find free page 
+                uintptr_t pa = free_pages();
+                if (pa == (uintptr_t) -1) {
+                    console_printf(CPOS(24, 0), 0x0C00, "Unable to setup Pagetable");
+                    return;
+                }
+
+                // Set state/owner
+                physical_page_alloc(pa, child->p_pid);
+
+                // Copy data from parent's page to new page & map in child's PT
+                memcpy((void*) pa, (void*) vam.pa, PAGESIZE);
+                virtual_memory_map(child->p_pagetable, va, pa, PAGESIZE, vam.perm);
+            } else if (va == PROC_START_ADDR) {
+                // JSJ Edit: (STEP 6) Support read-only 
+                if (pageinfo[vam.pn].refcount > 0 && pageinfo[vam.pn].owner > 0) {
+                    pageinfo[vam.pn].refcount++;
+                    virtual_memory_map(child->p_pagetable, va, vam.pa, PAGESIZE, vam.perm);   
+                }
+            }
+        }
+    }
+
+    return;
+}
 
 // exception(reg)
 //    Exception handler (for interrupts, traps, and faults).
@@ -240,55 +315,71 @@ void exception(x86_registers* reg) {
 
     // Actually handle the exception.
     switch (reg->reg_intno) {
+        case INT_SYS_PANIC:
+            panic(NULL);
+            break;                  // will not be reached
 
-    case INT_SYS_PANIC:
-        panic(NULL);
-        break;                  // will not be reached
+        case INT_SYS_GETPID:
+            current->p_registers.reg_eax = current->p_pid;
+            break;
 
-    case INT_SYS_GETPID:
-        current->p_registers.reg_eax = current->p_pid;
-        break;
+        case INT_SYS_YIELD:
+            schedule();
+            break;                  /* will not be reached */
 
-    case INT_SYS_YIELD:
-        schedule();
-        break;                  /* will not be reached */
+        case INT_SYS_PAGE_ALLOC: {
+            // JSJ Edit: (STEP 3) Switch sys_page_alloc to use any free page
+            // Find & allocate free page
+            uintptr_t pa = free_pages();
+            // JSJ Edit: (STEP 4) If there is no physical memory available, 
+            //     print out error & return error to caller
+            if (pa == (uintptr_t) -1)
+                console_printf(CPOS(24, 0), 0x0C00, "Out of physical memory!");
+            int r = physical_page_alloc(pa, current->p_pid);
 
-    case INT_SYS_PAGE_ALLOC: {
-        uintptr_t addr = current->p_registers.reg_eax;
-        int r = physical_page_alloc(addr, current->p_pid);
-        if (r >= 0)
-            virtual_memory_map(current->p_pagetable, addr, addr,
-                               PAGESIZE, PTE_P|PTE_W|PTE_U);
-        current->p_registers.reg_eax = r;
-        break;
-    }
+            // Map physical page at requested virtual address
+            if (r >= 0) {
+                uintptr_t va = current->p_registers.reg_eax;
+                virtual_memory_map(current->p_pagetable, va, pa, PAGESIZE, 
+                    PTE_P|PTE_W|PTE_U);
+            }
 
-    case INT_TIMER:
-        ++ticks;
-        schedule();
-        break;                  /* will not be reached */
+            // Set eax to return value of physical page allocation
+            current->p_registers.reg_eax = r;
+            break;
+        }
 
-    case INT_PAGEFAULT: {
-        // Analyze faulting address and access type.
-        uintptr_t addr = rcr2();
-        const char* operation = reg->reg_err & PFERR_WRITE
-                ? "write" : "read";
-        const char* problem = reg->reg_err & PFERR_PRESENT
-                ? "protection problem" : "missing page";
+        case INT_TIMER:
+            ++ticks;
+            schedule();
+            break;                  /* will not be reached */
 
-        if (!(reg->reg_err & PFERR_USER))
-            panic("Kernel page fault for %p (%s %s, eip=%p)!\n",
-                  addr, operation, problem, reg->reg_eip);
-        console_printf(CPOS(24, 0), 0x0C00,
-                       "Process %d page fault for %p (%s %s, eip=%p)!\n",
-                       current->p_pid, addr, operation, problem, reg->reg_eip);
-        current->p_state = P_BROKEN;
-        break;
-    }
+        case INT_PAGEFAULT: {
+            // Analyze faulting address and access type.
+            uintptr_t addr = rcr2();
+            const char* operation = reg->reg_err & PFERR_WRITE
+                    ? "write" : "read";
+            const char* problem = reg->reg_err & PFERR_PRESENT
+                    ? "protection problem" : "missing page";
 
-    default:
-        panic("Unexpected exception %d!\n", reg->reg_intno);
-        break;                  /* will not be reached */
+            if (!(reg->reg_err & PFERR_USER))
+                panic("Kernel page fault for %p (%s %s, eip=%p)!\n",
+                      addr, operation, problem, reg->reg_eip);
+            console_printf(CPOS(24, 0), 0x0C00,
+                           "Process %d page fault for %p (%s %s, eip=%p)!\n",
+                           current->p_pid, addr, operation, problem, reg->reg_eip);
+            current->p_state = P_BROKEN;
+            break;
+        }
+
+        case INT_SYS_FORK:
+            fork();
+            //run(current);
+            break;                  /* will not be reached */
+
+        default:
+            panic("Unexpected exception %d!\n", reg->reg_intno);
+            break;                  /* will not be reached */
 
     }
 
@@ -299,7 +390,6 @@ void exception(x86_registers* reg) {
     else
         schedule();
 }
-
 
 // schedule
 //    Pick the next process to run and then run it.
@@ -315,7 +405,6 @@ void schedule(void) {
         check_keyboard();
     }
 }
-
 
 // run(p)
 //    Run process `p`. This means reloading all the registers from
@@ -341,7 +430,6 @@ void run(proc* p) {
  spinloop: goto spinloop;       // should never get here
 }
 
-
 // pageinfo_init
 //    Initialize the `pageinfo[]` array.
 
@@ -361,7 +449,6 @@ void pageinfo_init(void) {
         pageinfo[PAGENUMBER(addr)].refcount = (owner != PO_FREE);
     }
 }
-
 
 // virtual_memory_check
 //    Check operating system invariants about virtual memory. Panic if any
@@ -423,7 +510,6 @@ void virtual_memory_check(void) {
             assert(processes[pageinfo[pn].owner].p_state != P_FREE);
 }
 
-
 // memshow_physical
 //    Draw a picture of physical memory on the CGA console.
 
@@ -452,7 +538,6 @@ void memshow_physical(void) {
         console[CPOS(1 + pn / 64, 12 + pn % 64)] = color;
     }
 }
-
 
 // memshow_virtual(pagetable, name)
 //    Draw a picture of the virtual memory map `pagetable` (named `name`) on
@@ -487,7 +572,6 @@ void memshow_virtual(x86_pagetable* pagetable, const char* name) {
         console[CPOS(11 + pn / 64, 12 + pn % 64)] = color;
     }
 }
-
 
 // memshow_virtual_animate
 //    Draw a picture of process virtual memory maps on the CGA console.
