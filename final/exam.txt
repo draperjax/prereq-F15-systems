@@ -1,11 +1,11 @@
-/* You will place all the answers for your exam in this file. Please be sure to label
+You will place all the answers for your exam in this file. Please be sure to label
 each question clearly, so there is absolutely no possibility we will miss that you've
 answered a question. Please do not place your name anywhere in this file.
 
 After you have completed the exam, edit the file policy.txt, and attest that
 you have followed the rules for the exam by writing, "I have I have neither
 given nor received help on this exam and have followed the rules as stated."
-Then type your name beneath it, indicating compliance. */
+Then type your name beneath it, indicating compliance.
 
 1. Data Representation
 A 2^16
